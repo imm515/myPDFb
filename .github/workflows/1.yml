@@ -1,0 +1,84 @@
+name: 1 转换切割
+
+on:
+  workflow_dispatch:  # 使工作流支持手动触发
+
+jobs:
+  process-pdf:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v2
+
+      - name: Checkout private repo
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ secrets.PRIVATE_REPO }}
+          token: ${{ secrets.PAT }}
+          path: private-repo
+          ref: main  # 如果你的私库默认分支是 `main`，否则改成 `master`
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils python3-pip
+          pip3 install pdf2image pillow
+
+      - name: List PDF files in private repo
+        run: |
+          find private-repo/${{ secrets.PRIVATE_DIR }} -name "*.pdf" | sort > pdf_files.txt
+
+      - name: Debug repository setup
+        run: |
+          git remote -v
+          git branch -a
+
+      - name: Process PDF files and cut pages into three parts
+        run: |
+          mkdir -p private-repo/***/1cut
+          counter=1
+          while IFS= read -r file; do
+              filename=$(basename "$file")
+              short_filename="${filename:0:5}...${filename: -5}"
+              echo "Processing file: $short_filename"
+              
+              # 将 counter 作为环境变量传递给 Python 脚本
+              PDF_PATH=$file FILENAME=$filename OUTPUT_DIR=private-repo/***/1cut COUNTER=$counter python3 <<EOF
+          from pdf2image import convert_from_path
+          import os
+          from PIL import Image
+          
+          # 获取环境变量
+          pdf_path = os.getenv("PDF_PATH")
+          output_dir = os.getenv("OUTPUT_DIR")
+          filename = os.getenv("FILENAME")
+          counter = int(os.getenv("COUNTER"))  # 将 COUNTER 转换为整数
+          
+          # 将 PDF 转换为图片
+          images = convert_from_path(pdf_path, dpi=150)
+          
+          for i, image in enumerate(images):
+              image_path = os.path.join(output_dir, f"{os.path.splitext(filename)[0]}_page-{i+1}.png")
+              image.save(image_path, "PNG")
+          
+              # 将图片裁剪为上、中、下三部分
+              width, height = image.size
+              top = image.crop((0, 0, width, height // 3))
+              middle = image.crop((0, height // 3, width, 2 * height // 3))
+              bottom = image.crop((0, 2 * height // 3, width, height))
+          
+              top.save(os.path.join(output_dir, f"{counter}_top.png"))
+              middle.save(os.path.join(output_dir, f"{counter}_middle.png"))
+              bottom.save(os.path.join(output_dir, f"{counter}_bottom.png"))
+              counter += 1
+          EOF
+          
+              echo "Finished processing $short_filename"
+              counter=$((counter + 1))  # 在 Bash 中更新 counter
+          done < pdf_files.txt
+        env:
+          PDF_PATH: "$file"
+          FILENAME: "$filename"
+          OUTPUT_DIR: "private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          COUNTER: "$counter"

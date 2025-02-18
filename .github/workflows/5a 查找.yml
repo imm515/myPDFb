@@ -1,0 +1,125 @@
+name: 5a Find and Copy Numbered Files
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean_target:
+        description: '是否清空旧3查找目录？'
+        required: false
+        default: 'true'
+
+jobs:
+  file-matcher:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/2name
+      TARGET_DIR: ${{ secrets.PRIVATE_DIR }}/3查找
+      SEARCH_FILE: ${{ secrets.PRIVATE_DIR }}/#查找单号
+
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.PRIVATE_REPO }}
+          token: ${{ secrets.PAT }}
+          path: private-repo
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Initialize directories
+        run: |
+          cd private-repo
+          # 处理目标目录
+          if [ "${{ github.event.inputs.clean_target }}" = "true" ]; then
+            rm -rf "$TARGET_DIR"
+            echo "♻️ 已清空旧3查找目录"
+          fi
+          mkdir -p "$TARGET_DIR"
+          
+          # 检查查找单号文件是否存在
+          if [ ! -f "$SEARCH_FILE" ]; then
+            echo "::error::查找单号文件不存在：$SEARCH_FILE"
+            exit 1
+          fi
+
+      - name: Process number matching
+        run: |
+          cd private-repo
+          python3 <<EOF
+          import os
+          import re
+          import shutil
+          from pathlib import Path
+
+          source_dir = Path(os.getenv("SOURCE_DIR"))
+          target_dir = Path(os.getenv("TARGET_DIR"))
+          search_file = Path(os.getenv("SEARCH_FILE"))
+
+          # 解析查找单号文件
+          search_numbers = []
+          with open(search_file, 'r') as f:
+              for line in f:
+                  line = line.strip()
+                  # 跳过注释和空行
+                  if line.startswith('#') or not line:
+                      continue
+                  # 提取数字部分（支持两种格式）
+                  if '--' in line:
+                      num = line.split('--')[-1].strip()
+                  else:
+                      num = line.split()[0].strip()
+                  if num.isdigit():
+                      search_numbers.append(f"{int(num):04d}")
+
+          print(f"需要查找的编号：{search_numbers}")
+
+          # 创建目标目录结构
+          target_dir.mkdir(parents=True, exist_ok=True)
+
+          # 匹配文件并复制
+          copied_files = []
+          for file_path in source_dir.glob('**/*.png'):
+              # 匹配四位数开头的文件名
+              match = re.match(r'^(\d{4})_', file_path.name)
+              if not match:
+                  continue
+              
+              file_num = match.group(1)
+              if file_num in search_numbers:
+                  target_path = target_dir / file_path.name
+                  
+                  # 处理重名文件
+                  counter = 1
+                  while target_path.exists():
+                      new_name = f"{file_num}_{counter:02d}{file_path.suffix}"
+                      target_path = target_dir / new_name
+                      counter += 1
+                  
+                  shutil.copy2(file_path, target_path)
+                  copied_files.append(target_path.name)
+
+          print(f"\n成功复制 {len(copied_files)} 个文件：")
+          print('\n'.join(copied_files))
+
+          if not copied_files:
+              print("::warning::没有找到匹配的文件！")
+              exit(78)
+          EOF
+
+      - name: Commit and push results
+        run: |
+          cd private-repo
+          git config user.email "file-matcher@auto"
+          git config user.name "File Matcher"
+          
+          # 生成智能提交信息
+          file_count=$(find "$TARGET_DIR" -type f | wc -l)
+          commit_msg="Auto: 找到并复制 $file_count 个匹配文件"
+          
+          git add "$TARGET_DIR"
+          git commit -m "$commit_msg"
+          git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
