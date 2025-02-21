@@ -60,8 +60,7 @@ jobs:
 
           reader = PdfReader(pdf_path)
           
-          for page_num in range(len(reader.pages)):
-              page = reader.pages[page_num]
+          for page_num, page in enumerate(reader.pages):
               media_box = page.mediabox
               page_height = float(media_box.top) - float(media_box.bottom)
               section_height = page_height / 3
