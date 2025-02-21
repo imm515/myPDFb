@@ -62,7 +62,7 @@ jobs:
 
           for page_num, page in enumerate(doc, 1):
               # 将页面渲染为图像
-              pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 提高分辨率
+              pix = page.get_pixmap(matrix=fitz.Matrix(1, 1))  # 提高分辨率
               img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
               
               # 保存完整页面
