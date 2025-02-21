@@ -58,9 +58,9 @@ jobs:
               base_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
               for page_num, page in enumerate(doc, 1):
-                  # 获取页面尺寸
-                  rect = page.rect
-                  w, h = rect.width, rect.height
+                  # 获取页面尺寸（MediaBox）
+                  media_box = page.rect
+                  w, h = media_box.width, media_box.height
 
                   # 切割三部分
                   for part_num, (part_name, (y0, y1)) in enumerate([
@@ -70,6 +70,11 @@ jobs:
                   ], 1):
                       # 定义裁切区域
                       crop_rect = fitz.Rect(0, y0, w, y1)
+
+                      # 确保裁切区域在 MediaBox 范围内
+                      if not media_box.contains(crop_rect):
+                          print(f"Warning: CropBox for {part_name} is outside MediaBox. Adjusting...")
+                          crop_rect = crop_rect.intersect(media_box)  # 将裁切区域限制在 MediaBox 内
 
                       # 创建一个新的 PDF 文档
                       new_doc = fitz.open()
