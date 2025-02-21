@@ -8,9 +8,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout public repo
-        uses: actions/checkout@v4
-
       - name: Checkout private repo
         uses: actions/checkout@v4
         with:
