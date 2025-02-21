@@ -1,4 +1,4 @@
-name: 3e 提取本文，压缩png
+name: 3e 提取本文，png格式
 
 on:
   workflow_dispatch:
@@ -61,8 +61,8 @@ jobs:
           doc = fitz.open(pdf_path)
 
           for page_num, page in enumerate(doc, 1):
-              # 将页面渲染为图像
-              pix = page.get_pixmap(matrix=fitz.Matrix(1, 1))  # 提高分辨率
+              # 将页面渲染为图像，分辨率提高 2 倍
+              pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 分辨率提高 2 倍
               img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
               
               # 保存完整页面
@@ -81,9 +81,10 @@ jobs:
                   crop.save(f"{output_dir}/{base_name}_p{page_num}_{part_name}.png")
                   
                   # 提取对应区域的文本
-                  rect = fitz.Rect(x0, y0, x1, y1)
+                  # 注意：提取框的坐标和尺寸需要按比例放大 2 倍
+                  rect = fitz.Rect(x0 / 2, y0 / 2, x1 / 2, y1 / 2)  # 按比例缩小回原始 PDF 的坐标
                   text = page.get_textbox(rect)
-                  txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"  # 删除多余的右括号
+                  txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"
                   with open(txt_path, "w", encoding="utf-8") as f:
                       f.write(text)
           EOF
