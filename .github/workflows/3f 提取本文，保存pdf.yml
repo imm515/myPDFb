@@ -37,26 +37,26 @@ jobs:
 
           def deep_clean_pdf(input_path, output_path):
               """深度清理PDF元数据和隐藏内容"""
-              # 第一步：使用Ghostscript清理
-              with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp1:
-                  subprocess.run([
-                      'gs', '-q',
-                      '-o', tmp1.name,
-                      '-sDEVICE=pdfwrite',
-                      '-dPDFSETTINGS=/prepress',
-                      '-dColorConversionStrategy=/sRGB',
-                      '-dProcessColorModel=/DeviceRGB',
-                      '-dCompatibilityLevel=1.7',
-                      '-dDetectDuplicateImages=true',
-                      '-dCompressFonts=true',
-                      '-dNOPAUSE',
-                      '-dQUIET',
-                      '-dBATCH',
-                      input_path
-                  ], check=True)
-                  
-                  # 第二步：使用pypdf清理元数据
-                  reader = PdfReader(tmp1.name)
+              # 使用Ghostscript清理
+              subprocess.run([
+                  'gs', '-q',
+                  '-o', output_path,
+                  '-sDEVICE=pdfwrite',
+                  '-dPDFSETTINGS=/prepress',
+                  '-dColorConversionStrategy=/sRGB',
+                  '-dProcessColorModel=/DeviceRGB',
+                  '-dCompatibilityLevel=1.7',
+                  '-dDetectDuplicateImages=true',
+                  '-dCompressFonts=true',
+                  '-dNOPAUSE',
+                  '-dQUIET',
+                  '-dBATCH',
+                  input_path
+              ], check=True)
+
+              # 使用pypdf清理元数据
+              with open(output_path, 'rb') as f:
+                  reader = PdfReader(f)
                   writer = PdfWriter()
                   
                   for page in reader.pages:
@@ -70,55 +70,53 @@ jobs:
 
           def sanitize_pdf(input_path, output_path, crop_box):
               """安全裁剪PDF"""
-              with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
-                  # 生成临时裁剪文件
-                  doc = fitz.open(input_path)
+              with fitz.open(input_path) as doc:
                   new_doc = fitz.open()
                   new_doc.insert_pdf(doc)
                   new_doc[0].set_cropbox(crop_box)
-                  new_doc.save(tmp.name)
+                  new_doc.save(output_path)
                   new_doc.close()
-                  
-                  # 深度清理
-                  deep_clean_pdf(tmp.name, output_path)
+              
+              # 深度清理
+              deep_clean_pdf(output_path, output_path)
 
           def split_pdf(pdf_path, output_dir):
-              doc = fitz.open(pdf_path)
-              base = os.path.splitext(os.path.basename(pdf_path))[0]
-              
-              for pg in range(len(doc)):
-                  page = doc[pg]
-                  media_box = page.mediabox
-                  width, height = media_box.x1, media_box.y1
+              with fitz.open(pdf_path) as doc:  # 确保文档对象正确管理
+                  base = os.path.splitext(os.path.basename(pdf_path))[0]
+                  
+                  for pg in range(len(doc)):
+                      page = doc[pg]
+                      media_box = page.mediabox
+                      width, height = media_box.x1, media_box.y1
 
-                  for part in ["1top", "2mid", "3bot"]:
-                      if part == "1top":
-                          crop = fitz.Rect(0, 0, width, height/3)
-                      elif part == "2mid":
-                          crop = fitz.Rect(0, height/3, width, 2*height/3)
-                      else:
-                          crop = fitz.Rect(0, 2*height/3, width, height)
+                      for part in ["1top", "2mid", "3bot"]:
+                          if part == "1top":
+                              crop = fitz.Rect(0, 0, width, height/3)
+                          elif part == "2mid":
+                              crop = fitz.Rect(0, height/3, width, 2*height/3)
+                          else:
+                              crop = fitz.Rect(0, 2*height/3, width, height)
 
-                      final_name = f"{base}_p{pg+1}_{part}"
-                      final_pdf = f"{output_dir}/{final_name}.pdf"
-                      txt_file = f"{output_dir}/{final_name}.txt"
-                      
-                      try:
-                          sanitize_pdf(pdf_path, final_pdf, crop)
+                          final_name = f"{base}_p{pg+1}_{part}"
+                          final_pdf = f"{output_dir}/{final_name}.pdf"
+                          txt_file = f"{output_dir}/{final_name}.txt"
                           
-                          # 文本提取（从清理后的文件）
-                          with fitz.open(final_pdf) as doc:
-                              text = doc[0].get_text()
-                              with open(txt_file, "w", encoding="utf-8") as f:
-                                  f.write(text.strip())
-                          
-                          # 最终验证
-                          subprocess.run(["exiftool", "-all=", "-overwrite_original", final_pdf])
-                          subprocess.run(["qpdf", "--linearize", final_pdf, final_pdf+".tmp"])
-                          os.rename(final_pdf+".tmp", final_pdf)
+                          try:
+                              sanitize_pdf(pdf_path, final_pdf, crop)
+                              
+                              # 文本提取（从清理后的文件）
+                              with fitz.open(final_pdf) as clean_doc:
+                                  text = clean_doc[0].get_text()
+                                  with open(txt_file, "w", encoding="utf-8") as f:
+                                      f.write(text.strip())
+                              
+                              # 最终验证
+                              subprocess.run(["exiftool", "-overwrite_original", "-all=", final_pdf])
+                              subprocess.run(["qpdf", "--linearize", final_pdf, final_pdf+".tmp"])
+                              os.rename(final_pdf+".tmp", final_pdf)
 
-                      except Exception as e:
-                          print(f"处理失败: {final_name} - {str(e)}")
+                          except Exception as e:
+                              print(f"处理失败: {final_name} - {str(e)}")
 
           if __name__ == "__main__":
               if len(sys.argv) != 3:
@@ -137,7 +135,7 @@ jobs:
         run: |
           OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
           # 验证元数据
-          find "$OUTPUT_DIR" -name "*.pdf" -exec exiftool {} \; | grep -E 'Creator|Producer|Modify Date'
+          find "$OUTPUT_DIR" -name "*.pdf" -exec exiftool {} \;
           # 验证文件结构
           find "$OUTPUT_DIR" -name "*.pdf" -exec qpdf --check {} \;
 
