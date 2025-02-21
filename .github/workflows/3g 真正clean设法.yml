@@ -51,63 +51,60 @@ jobs:
           import fitz  # PyMuPDF
           import os
           import sys
-
+          
           def process_pdf(pdf_path, output_dir):
-              # 打开 PDF 文件
               doc = fitz.open(pdf_path)
               base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-
+          
               for page_num, page in enumerate(doc, 1):
-                  # 获取页面尺寸（MediaBox）
                   media_box = page.rect
-                  w, h = media_box.width, media_box.height
-
-                  # 切割三部分
+                  w, h = int(media_box.width), int(media_box.height)  # 强制转换为整数
+          
                   for part_num, (part_name, (y0, y1)) in enumerate([
-                      ("1top", (0, h / 3)),
-                      ("2mid", (h / 3, 2 * h / 3)),
-                      ("3bot", (2 * h / 3, h))
+                      ("1top", (0, h // 3)),
+                      ("2mid", (h // 3, 2 * h // 3)),
+                      ("3bot", (2 * h // 3, h))
                   ], 1):
-                      # 定义裁切区域
+                      # 强制转换为整数
+                      y0 = int(y0)
+                      y1 = int(y1)
                       crop_rect = fitz.Rect(0, y0, w, y1)
-
-                      # 确保裁切区域在 MediaBox 范围内
+          
+                      # 验证并限制裁切区域
                       if not media_box.contains(crop_rect):
-                          print(f"Warning: CropBox for {part_name} is outside MediaBox. Adjusting...")
-                          crop_rect = crop_rect.intersect(media_box)  # 将裁切区域限制在 MediaBox 内
-
-                          # 如果裁切区域无效（完全超出 MediaBox），跳过该部分
+                          crop_rect = media_box.intersect(crop_rect)
                           if crop_rect.is_empty:
-                              print(f"Skipping {part_name} because it is completely outside MediaBox.")
+                              print(f"Skipping {part_name} (empty crop area)")
                               continue
-
-                      # 创建一个新的 PDF 文档
+          
                       new_doc = fitz.open()
                       new_page = new_doc.new_page(width=crop_rect.width, height=crop_rect.height)
-
-                      # 将裁切区域插入到新页面
                       new_page.show_pdf_page(
-                          fitz.Rect(0, 0, crop_rect.width, crop_rect.height),  # 目标区域
-                          doc,  # 原始文档
-                          page_num - 1,  # 原始页面索引（从 0 开始）
-                          clip=crop_rect  # 裁切区域
+                          fitz.Rect(0, 0, crop_rect.width, crop_rect.height),
+                          doc,
+                          page_num - 1,
+                          clip=crop_rect
                       )
-
-                      # 设置裁切框并清理未显示的内容
-                      new_page.set_cropbox(crop_rect)
+          
+                      # 设置 CropBox 前再次验证
+                      try:
+                          new_page.set_cropbox(crop_rect)
+                      except ValueError as e:
+                          print(f"Error setting CropBox: {e}. Skipping...")
+                          new_doc.close()
+                          continue
+          
                       new_page.clean_contents()
-
-                      # 保存裁切后的 PDF
                       output_pdf_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.pdf"
-                      new_doc.save(output_pdf_path, garbage=4, deflate=True)  # 清理未引用对象并压缩
+                      new_doc.save(output_pdf_path, garbage=4, deflate=True)
                       new_doc.close()
-
-                      # 提取对应区域的文本
+          
+                      # 提取文本
                       text = page.get_textbox(crop_rect)
                       txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"
                       with open(txt_path, "w", encoding="utf-8") as f:
                           f.write(text)
-
+          
           if __name__ == "__main__":
               pdf_path = sys.argv[1]
               output_dir = sys.argv[2]
