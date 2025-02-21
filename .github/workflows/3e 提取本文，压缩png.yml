@@ -1,0 +1,103 @@
+name: 3e 提取本文，压缩png
+
+on:
+  workflow_dispatch:
+
+jobs:
+  process-pdf:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.PRIVATE_REPO }}
+          token: ${{ secrets.PAT }}
+          path: private-repo
+          ref: main
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils python3-pip
+          pip3 install PyMuPDF pillow
+
+      - name: Clean 1cut directory
+        run: |
+          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          if [ -d "$OUTPUT_DIR" ]; then
+            rm -rf "$OUTPUT_DIR"/*
+          else
+            mkdir -p "$OUTPUT_DIR"
+          fi
+
+      - name: List PDF files in private repo (root directory only)
+        run: |
+          find private-repo/${{ secrets.PRIVATE_DIR }} -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
+          echo "Found PDF files:"
+          cat pdf_files.txt
+
+      - name: Process PDF files and cut pages into three parts
+        run: |
+          # 初始化输出目录
+          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          mkdir -p "$OUTPUT_DIR"
+      
+          # 将 Python 逻辑写入临时脚本
+          cat << 'EOF' > process_pdf.py
+          import fitz  # PyMuPDF
+          import os
+          import sys
+
+          pdf_path = sys.argv[1]
+          output_dir = sys.argv[2]
+          base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+
+          # 打开 PDF 文件
+          doc = fitz.open(pdf_path)
+
+          for page_num, page in enumerate(doc, 1):
+              # 将页面渲染为图像
+              pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 提高分辨率
+              img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+              
+              # 保存完整页面
+              full_page = os.path.join(output_dir, f"{base_name}_p{page_num}.png")
+              img.save(full_page, "PNG")
+              
+              # 切割三部分
+              w, h = img.size
+              for part_num, (part_name, (x0, y0, x1, y1)) in enumerate([
+                  ("1top", (0, 0, w, h//3)),
+                  ("2mid", (0, h//3, w, h*2//3)),
+                  ("3bot", (0, h*2//3, w, h))
+              ], 1):
+                  # 保存切割后的图像
+                  crop = img.crop((x0, y0, x1, y1))
+                  crop.save(f"{output_dir}/{base_name}_p{page_num}_{part_name}.png")
+                  
+                  # 提取对应区域的文本
+                  rect = fitz.Rect(x0, y0, x1, y1)
+                  text = page.get_textbox(rect)
+                  txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"
+                  with open(txt_path, "w", encoding="utf-8") as f:
+                      f.write(text)
+          EOF
+      
+          # 处理每个 PDF 文件
+          while IFS= read -r pdf_path; do
+              echo "Processing: $pdf_path"
+              python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
+          done < pdf_files.txt
+
+      - name: Commit and push to private repo
+        run: |
+          cd private-repo
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add .
+          git commit -m "Auto: Processed PDF images and extracted text"
+          git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
