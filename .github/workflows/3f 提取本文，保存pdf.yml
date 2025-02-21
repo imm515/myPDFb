@@ -62,24 +62,46 @@ jobs:
               doc = fitz.open(pdf_path)
               base = os.path.splitext(os.path.basename(pdf_path))[0]
               for pg in range(len(doc)):
+                  page = doc[pg]
+                  media_box = page.mediabox  # 获取 MediaBox 尺寸
+                  width, height = media_box.width, media_box.height
+
                   for part in ["1top", "2mid", "3bot"]:
                       # 创建分块PDF
                       new_doc = fitz.open()
                       new_doc.insert_pdf(doc, from_page=pg, to_page=pg)
-                      new_doc[0].set_cropbox(fitz.Rect(0, 0, 500, 300))  # 示例尺寸
+                      new_page = new_doc[0]
+
+                      # 根据 MediaBox 设置 CropBox
+                      if part == "1top":
+                          crop_box = fitz.Rect(0, 0, width, height / 3)
+                      elif part == "2mid":
+                          crop_box = fitz.Rect(0, height / 3, width, 2 * height / 3)
+                      elif part == "3bot":
+                          crop_box = fitz.Rect(0, 2 * height / 3, width, height)
+                      new_page.set_cropbox(crop_box)
+
+                      # 保存裁切后的 PDF 到临时文件
                       temp_pdf = f"{base}_p{pg+1}_{part}.pdf"
-                      new_doc.save(temp_pdf)
-                      # 打印并等待
+                      new_doc.save(temp_pdf, deflate=True)
+                      new_doc.close()
+
+                      # 提取文本
+                      text = new_page.get_textbox(crop_box)
+                      txt_path = f"{output_dir}/{base}_p{pg+1}_{part}.txt"
+                      with open(txt_path, "w", encoding="utf-8") as f:
+                          f.write(text)
+
+                      # 打印 PDF
                       subprocess.run(["lp", "-d", "PDF", temp_pdf])
-                      # 验证生成结果
+
+                      # 等待文件生成
                       for _ in range(5):
                           if glob.glob(f"{output_dir}/{temp_pdf}"):
                               break
                           time.sleep(2)
-                      # 提取文本
-                      text = new_doc[0].get_text()
-                      with open(f"{output_dir}/{base}_p{pg+1}_{part}.txt", "w") as f:
-                          f.write(text)
+
+                      # 清理临时文件
                       os.remove(temp_pdf)
 
           if __name__ == "__main__":
