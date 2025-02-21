@@ -1,4 +1,4 @@
-name: 3a 换工具
+name: 3a png
 
 on:
   workflow_dispatch:
