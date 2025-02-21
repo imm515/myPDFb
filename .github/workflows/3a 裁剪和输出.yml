@@ -1,4 +1,4 @@
-name: 3a 裁剪和输出
+name: 3 Process PDF and Commit
 
 on:
   workflow_dispatch:
@@ -8,6 +8,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+
       - name: Checkout private repo
         uses: actions/checkout@v4
         with:
@@ -20,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils python3-pip
-          pip3 install PyPDF2 pdf2image pillow pymupdf
+          pip3 install pdf2image pillow
 
       - name: Clean 1cut directory
         run: |
@@ -33,14 +36,16 @@ jobs:
 
       - name: List PDF files in private repo
         run: |
-          find private-repo/${{ secrets.PRIVATE_DIR }} -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
+          find private-repo/${{ secrets.PRIVATE_DIR }} -name "*.pdf" | sort > pdf_files.txt
 
       - name: Process PDF files and cut pages into three parts
         run: |
+          # 初始化输出目录
           OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
           mkdir -p "$OUTPUT_DIR"
       
-          mapfile -d '' pdf_files < <(find "private-repo/${{ secrets.PRIVATE_DIR }}" -maxdepth 1 -name "*.pdf" -print0 | sort -z)
+          # 安全读取文件列表（处理含空格路径）
+          mapfile -d '' pdf_files < <(find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | sort -z)
       
           echo "Found ${#pdf_files[@]} PDF files:"
           printf '  - %s\n' "${pdf_files[@]}"
@@ -50,51 +55,30 @@ jobs:
               echo "Processing: $filename"
               
               PDF_PATH="$pdf_path" OUTPUT_DIR="$OUTPUT_DIR" python3 <<EOF
-          from PyPDF2 import PdfReader, PdfWriter
+          from pdf2image import convert_from_path
           import os
-          import fitz
-
+          from PIL import Image
+      
           pdf_path = os.getenv("PDF_PATH")
           output_dir = os.getenv("OUTPUT_DIR")
           base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-
-          reader = PdfReader(pdf_path)
+      
+          images = convert_from_path(pdf_path, dpi=150)
           
-          for page_num, page in enumerate(reader.pages):
-              media_box = page.mediabox
-              page_height = float(media_box.top) - float(media_box.bottom)
-              section_height = page_height / 3
+          for page_num, img in enumerate(images, 1):
+              # 保存完整页面
+              full_page = os.path.join(output_dir, f"{base_name}_p{page_num}.png")
+              img.save(full_page, "PNG")
               
-              for i in range(3):
-                  writer = PdfWriter()
-                  new_page = page.copy()
-                  
-                  # 计算新页面的上下边界
-                  new_bottom = float(media_box.bottom) + i * section_height
-                  new_top = new_bottom + section_height
-                  new_mediabox = [
-                      float(media_box.left),
-                      new_bottom,
-                      float(media_box.right),
-                      new_top
-                  ]
-                  new_page.mediabox.upper_left = (new_mediabox[0], new_mediabox[3])
-                  new_page.mediabox.lower_right = (new_mediabox[2], new_mediabox[1])
-                  writer.add_page(new_page)
-                  
-                  part_name = f"{base_name}_p{page_num+1}_{['1top', '2mid', '3bot'][i]}.pdf"
-                  with open(os.path.join(output_dir, part_name), "wb") as output_pdf:
-                      writer.write(output_pdf)
-
-                  # 提取文本
-                  doc = fitz.open(pdf_path)
-                  page_pdf = doc.load_page(page_num)
-                  rect = fitz.Rect(0, new_bottom, float(media_box.right), new_top)
-                  text = page_pdf.get_text("text", clip=rect)
-                  
-                  text_filename = f"{base_name}_p{page_num+1}_{['1top', '2mid', '3bot'][i]}.txt"
-                  with open(os.path.join(output_dir, text_filename), "w", encoding="utf-8") as text_file:
-                      text_file.write(text)
+              # 切割三部分
+              w, h = img.size
+              for part_num, (part_name, (x0, y0, x1, y1)) in enumerate([
+                  ("1top", (0, 0, w, h//3)),
+                  ("2mid", (0, h//3, w, h*2//3)),
+                  ("3bot", (0, h*2//3, w, h))
+              ], 1):
+                  crop = img.crop((x0, y0, x1, y1))
+                  crop.save(f"{output_dir}/{base_name}_p{page_num}_{part_name}.png")
           EOF
           done
 
@@ -104,5 +88,5 @@ jobs:
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
           git add .
-          git commit -m "Auto: Processed PDF and split into parts with text"
+          git commit -m "Auto: Processed PDF images"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
