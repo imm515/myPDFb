@@ -1,4 +1,4 @@
-name: 3 Process PDF and Commit
+name: 3e 提取本文，压缩png
 
 on:
   workflow_dispatch:
@@ -51,7 +51,7 @@ jobs:
           import fitz  # PyMuPDF
           import os
           import sys
-          from PIL import Image  # 添加这一行以导入 Image 类
+          from PIL import Image  # 导入 Image 类
 
           pdf_path = sys.argv[1]
           output_dir = sys.argv[2]
@@ -83,7 +83,7 @@ jobs:
                   # 提取对应区域的文本
                   rect = fitz.Rect(x0, y0, x1, y1)
                   text = page.get_textbox(rect)
-                  txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt")
+                  txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"  # 删除多余的右括号
                   with open(txt_path, "w", encoding="utf-8") as f:
                       f.write(text)
           EOF
