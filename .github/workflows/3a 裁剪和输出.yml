@@ -30,7 +30,7 @@ jobs:
           else
             mkdir -p "$OUTPUT_DIR"
           fi
-  
+
       - name: List PDF files in private repo
         run: |
           find private-repo/${{ secrets.PRIVATE_DIR }} -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
@@ -40,7 +40,7 @@ jobs:
           OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
           mkdir -p "$OUTPUT_DIR"
       
-          mapfile -d '' pdf_files < <(find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | sort -z)
+          mapfile -d '' pdf_files < <(find "private-repo/${{ secrets.PRIVATE_DIR }}" -maxdepth 1 -name "*.pdf" -print0 | sort -z)
       
           echo "Found ${#pdf_files[@]} PDF files:"
           printf '  - %s\n' "${pdf_files[@]}"
