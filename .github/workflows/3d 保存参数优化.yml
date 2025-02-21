@@ -1,4 +1,4 @@
-name: 3c 保存参数优化
+name: 3d 保存参数优化
 
 on:
   workflow_dispatch:
