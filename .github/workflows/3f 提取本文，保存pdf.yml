@@ -1,4 +1,4 @@
-name: 3f 提取本文，保存pdf
+name: 3f PDF Processing
 
 on:
   workflow_dispatch:
@@ -8,85 +8,68 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout public repo
-        uses: actions/checkout@v4
-
-      - name: Checkout private repo
+      - name: Checkout repositories
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.PRIVATE_REPO }}
           token: ${{ secrets.PAT }}
           path: private-repo
-          ref: main
 
-      - name: Install dependencies
+      - name: Setup environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils python3-pip
+          sudo apt-get install -y poppler-utils python3-pip cups-pdf
+          sudo usermod -aG lpadmin $USER  # 添加用户到打印组
           pip3 install PyMuPDF
 
-      - name: Clean output directory
+      - name: Configure CUPS-PDF
         run: |
-          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          mkdir -p "$OUTPUT_DIR"
-          rm -rf "$OUTPUT_DIR"/*
+          OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          sudo mkdir -p "$OUTPUT_DIR"
+          sudo chmod 777 "$OUTPUT_DIR"
+          sudo sed -i "s|^Out .*|Out $OUTPUT_DIR|" /etc/cups/cups-pdf.conf
+          sudo sed -i "s|^PassThrough.*|PassThrough jpeg|" /etc/cups/cups-pdf.conf
+          sudo sed -i "s|^FilePrefix.*|FilePrefix ''|" /etc/cups/cups-pdf.conf
+          sudo systemctl restart cups
 
-      - name: Process PDF with fixed logic
+      - name: Process PDFs
         run: |
-          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          
-          cat << 'EOF' > process_pdf.py
-          import fitz
-          import os
-          import sys
-
-          def split_pdf(pdf_path, output_dir):
-              doc = fitz.open(pdf_path)
-              base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-
-              for page_num in range(doc.page_count):
-                  page = doc[page_num]
-                  w, h = page.rect.width, page.rect.height
-
-                  for part_name, y0, y1 in [
-                      ("1top", 0, h/3),
-                      ("2mid", h/3, 2*h/3),
-                      ("3bot", 2*h/3, h)
-                  ]:
+          OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | while IFS= read -r -d $'\0' file; do
+            python3 <<EOF
+          import fitz, os, subprocess, time, glob
+          def split_pdf(path):
+              doc = fitz.open(path)
+              base = os.path.splitext(os.path.basename(path))[0]
+              for pg in range(len(doc)):
+                  for part in ["1top", "2mid", "3bot"]:
+                      # 创建分块PDF
                       new_doc = fitz.open()
-                      new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
-                      new_page = new_doc[0]
-                      new_page.set_cropbox(fitz.Rect(0, y0, w, y1))
-
-                      # 在关闭前提取文本
-                      text = new_page.get_textbox(fitz.Rect(0, 0, w, y1 - y0))
-
-                      output_pdf = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}.pdf"
-                      new_doc.save(output_pdf, deflate=True)
-                      new_doc.close()
-
-                      txt_path = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}.txt"
-                      with open(txt_path, "w", encoding="utf-8") as f:
+                      new_doc.insert_pdf(doc, from_page=pg, to_page=pg)
+                      new_doc[0].set_cropbox(fitz.Rect(0, 0, 500, 300))  # 示例尺寸
+                      temp_pdf = f"{base}_p{pg+1}_{part}.pdf"
+                      new_doc.save(temp_pdf)
+                      # 打印并等待
+                      subprocess.run(["lpr", "-P", "PDF", temp_pdf])
+                      # 验证生成结果
+                      for _ in range(5):
+                          if glob.glob(f"{OUTPUT_DIR}/{temp_pdf}"):
+                              break
+                          time.sleep(2)
+                      # 提取文本
+                      text = new_doc[0].get_text()
+                      with open(f"{OUTPUT_DIR}/{base}_p{pg+1}_{part}.txt", "w") as f:
                           f.write(text)
-
-          if __name__ == "__main__":
-              if len(sys.argv) != 3:
-                  print("Usage: python process_pdf.py <input_pdf> <output_dir>")
-                  sys.exit(1)
-              split_pdf(sys.argv[1], sys.argv[2])
+                      os.remove(temp_pdf)
+          split_pdf("$file")
           EOF
-
-          # 处理所有 PDF（支持文件名含空格）
-          find "private-repo/${{ secrets.PRIVATE_DIR }}" -maxdepth 1 -name "*.pdf" -print0 | while IFS= read -r -d $'\0' pdf_path; do
-              echo "Processing: $pdf_path"
-              python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
           done
 
-      - name: Commit and push changes
+      - name: Commit changes
         run: |
           cd private-repo
-          git config user.email "actions@github.com"
-          git config user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
           git add .
-          git commit -m "Auto: Fixed page None error in PDF processing"
-          git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
+          git commit -m "Auto-processed PDFs" 
+          git push "https://${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git"
