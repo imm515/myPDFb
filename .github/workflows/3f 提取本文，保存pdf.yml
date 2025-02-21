@@ -1,4 +1,4 @@
-name: 3F Secure PDF Processing
+name: 3f 提取本文，保存pdf
 
 on:
   workflow_dispatch:
@@ -8,142 +8,103 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repositories
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+
+      - name: Checkout private repo
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.PRIVATE_REPO }}
           token: ${{ secrets.PAT }}
           path: private-repo
+          ref: main
 
-      - name: Setup environment
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip ghostscript exiftool qpdf
-          pip3 install PyMuPDF pypdf
-
-      - name: Clean output directory
+          sudo apt-get install -y poppler-utils python3-pip
+          pip3 install PyMuPDF pillow
+      - name: Clean 1cut directory
         run: |
-          OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          [ -d "$OUTPUT_DIR" ] && find "$OUTPUT_DIR" -mindepth 1 -delete || mkdir -p "$OUTPUT_DIR"
-          sudo chmod -R 777 "$OUTPUT_DIR"
-
-      - name: Process PDFs
+          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          if [ -d "$OUTPUT_DIR" ]; then
+            rm -rf "$OUTPUT_DIR"/*
+          else
+            mkdir -p "$OUTPUT_DIR"
+          fi
+      - name: List PDF files in private repo (root directory only)
         run: |
-          OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-
+          find private-repo/${{ secrets.PRIVATE_DIR }} -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
+          echo "Found PDF files:"
+          cat pdf_files.txt
+      - name: Process PDF files and cut pages into three parts
+        run: |
+          # 初始化输出目录
+          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          mkdir -p "$OUTPUT_DIR"
+      
+          # 将 Python 逻辑写入临时脚本
           cat << 'EOF' > process_pdf.py
-          import fitz, os, sys, subprocess, tempfile
-          from pypdf import PdfWriter, PdfReader
+          import fitz  # PyMuPDF
+          import os
+          import sys
 
-          def deep_clean_pdf(input_path, output_path):
-              """深度清理PDF元数据和隐藏内容"""
-              # 使用Ghostscript清理
-              subprocess.run([
-                  'gs', '-q',
-                  '-o', output_path,
-                  '-sDEVICE=pdfwrite',
-                  '-dPDFSETTINGS=/prepress',
-                  '-dColorConversionStrategy=/sRGB',
-                  '-dProcessColorModel=/DeviceRGB',
-                  '-dCompatibilityLevel=1.7',
-                  '-dDetectDuplicateImages=true',
-                  '-dCompressFonts=true',
-                  '-dNOPAUSE',
-                  '-dQUIET',
-                  '-dBATCH',
-                  input_path
-              ], check=True)
+          pdf_path = sys.argv[1]
+          output_dir = sys.argv[2]
+          base_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
-              # 使用pypdf清理元数据
-              with open(output_path, 'rb') as f:
-                  reader = PdfReader(f)
-                  writer = PdfWriter()
-                  
-                  for page in reader.pages:
-                      writer.add_page(page)
-                  
-                  # 移除所有元数据
-                  writer.add_metadata({})
-                  
-                  with open(output_path, 'wb') as f:
-                      writer.write(f)
+          # 打开 PDF 文件
+          doc = fitz.open(pdf_path)
 
-          def sanitize_pdf(input_path, output_path, crop_box):
-              """安全裁剪PDF"""
-              with fitz.open(input_path) as doc:
+          for page_num, page in enumerate(doc, 1):
+              # 获取页面尺寸
+              rect = page.rect
+              w, h = rect.width, rect.height
+
+              # 切割三部分
+              for part_num, (part_name, (y0, y1)) in enumerate([
+                  ("1top", (0, h / 3)),
+                  ("2mid", (h / 3, 2 * h / 3)),
+                  ("3bot", (2 * h / 3, h))
+              ], 1):
+                  # 定义裁切区域
+                  crop_rect = fitz.Rect(0, y0, w, y1)
+
+                  # 创建一个新的 PDF 页面
                   new_doc = fitz.open()
-                  new_doc.insert_pdf(doc)
-                  new_doc[0].set_cropbox(crop_box)
-                  new_doc.save(output_path)
+                  new_page = new_doc.new_page(width=crop_rect.width, height=crop_rect.height)
+
+                  # 将裁切区域的内容插入到新页面
+                  new_page.show_pdf_page(
+                      fitz.Rect(0, 0, crop_rect.width, crop_rect.height),  # 目标区域
+                      doc,  # 原始文档
+                      page_num - 1,  # 原始页面索引（从 0 开始）
+                      clip=crop_rect  # 裁切区域
+                  )
+
+                  # 保存裁切后的 PDF
+                  output_pdf_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.pdf"
+                  new_doc.save(output_pdf_path)
                   new_doc.close()
-              
-              # 深度清理
-              deep_clean_pdf(output_path, output_path)
 
-          def split_pdf(pdf_path, output_dir):
-              with fitz.open(pdf_path) as doc:  # 确保文档对象正确管理
-                  base = os.path.splitext(os.path.basename(pdf_path))[0]
-                  
-                  for pg in range(len(doc)):
-                      page = doc[pg]
-                      media_box = page.mediabox
-                      width, height = media_box.x1, media_box.y1
-
-                      for part in ["1top", "2mid", "3bot"]:
-                          if part == "1top":
-                              crop = fitz.Rect(0, 0, width, height/3)
-                          elif part == "2mid":
-                              crop = fitz.Rect(0, height/3, width, 2*height/3)
-                          else:
-                              crop = fitz.Rect(0, 2*height/3, width, height)
-
-                          final_name = f"{base}_p{pg+1}_{part}"
-                          final_pdf = f"{output_dir}/{final_name}.pdf"
-                          txt_file = f"{output_dir}/{final_name}.txt"
-                          
-                          try:
-                              sanitize_pdf(pdf_path, final_pdf, crop)
-                              
-                              # 文本提取（从清理后的文件）
-                              with fitz.open(final_pdf) as clean_doc:
-                                  text = clean_doc[0].get_text()
-                                  with open(txt_file, "w", encoding="utf-8") as f:
-                                      f.write(text.strip())
-                              
-                              # 最终验证
-                              subprocess.run(["exiftool", "-overwrite_original", "-all=", final_pdf])
-                              subprocess.run(["qpdf", "--linearize", final_pdf, final_pdf+".tmp"])
-                              os.rename(final_pdf+".tmp", final_pdf)
-
-                          except Exception as e:
-                              print(f"处理失败: {final_name} - {str(e)}")
-
-          if __name__ == "__main__":
-              if len(sys.argv) != 3:
-                  print("Usage: python process_pdf.py <input_pdf> <output_dir>")
-                  sys.exit(1)
-              split_pdf(sys.argv[1], sys.argv[2])
+                  # 提取对应区域的文本
+                  text = page.get_textbox(crop_rect)
+                  txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"
+                  with open(txt_path, "w", encoding="utf-8") as f:
+                      f.write(text)
           EOF
+      
+          # 处理每个 PDF 文件
+          while IFS= read -r pdf_path; do
+              echo "Processing: $pdf_path"
+              python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
+          done < pdf_files.txt
 
-          # 处理根目录PDF
-          find "private-repo/${{ secrets.PRIVATE_DIR }}" -maxdepth 1 -name "*.pdf" -print0 | while IFS= read -r -d $'\0' file; do
-              echo "Processing: $file"
-              python3 process_pdf.py "$file" "$OUTPUT_DIR"
-          done
-
-      - name: Security verification
-        run: |
-          OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          # 验证元数据
-          find "$OUTPUT_DIR" -name "*.pdf" -exec exiftool {} \;
-          # 验证文件结构
-          find "$OUTPUT_DIR" -name "*.pdf" -exec qpdf --check {} \;
-
-      - name: Commit changes
+      - name: Commit and push to private repo
         run: |
           cd private-repo
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
           git add .
-          git commit -m "Secure PDF Process [$(date +'%Y%m%d-%H%M%S')]"
-          git push "https://${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git"
+          git commit -m "Auto: Processed PDF images and extracted text"
+          git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
