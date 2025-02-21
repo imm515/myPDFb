@@ -1,0 +1,109 @@
+name: 3a 裁剪和输出
+
+on:
+  workflow_dispatch:
+
+jobs:
+  process-pdf:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.PRIVATE_REPO }}
+          token: ${{ secrets.PAT }}
+          path: private-repo
+          ref: main
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils python3-pip
+          pip3 install PyPDF2 pdf2image pillow pymupdf
+
+      - name: Clean 1cut directory
+        run: |
+          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          if [ -d "$OUTPUT_DIR" ]; then
+            rm -rf "$OUTPUT_DIR"/*
+          else
+            mkdir -p "$OUTPUT_DIR"
+          fi
+
+      - name: List PDF files in private repo
+        run: |
+          find private-repo/${{ secrets.PRIVATE_DIR }} -name "*.pdf" | sort > pdf_files.txt
+
+      - name: Process PDF files and cut pages into three parts
+        run: |
+          # 初始化输出目录
+          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          mkdir -p "$OUTPUT_DIR"
+      
+          # 安全读取文件列表（处理含空格路径）
+          mapfile -d '' pdf_files < <(find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | sort -z)
+      
+          echo "Found ${#pdf_files[@]} PDF files:"
+          printf '  - %s\n' "${pdf_files[@]}"
+      
+          for pdf_path in "${pdf_files[@]}"; do
+              filename=$(basename "$pdf_path")
+              echo "Processing: $filename"
+              
+              # 使用Python处理每个PDF
+              PDF_PATH="$pdf_path" OUTPUT_DIR="$OUTPUT_DIR" python3 <<EOF
+          from PyPDF2 import PdfReader, PdfWriter
+          import os
+          import fitz  # PyMuPDF
+
+          pdf_path = os.getenv("PDF_PATH")
+          output_dir = os.getenv("OUTPUT_DIR")
+          base_name = os.path.splitext(os.path.basename(pdf_path))[0]  # 获取文件基本名，不含扩展名
+
+          reader = PdfReader(pdf_path)
+          
+          # 切割每一页为三部分
+          for page_num in range(len(reader.pages)):
+              page = reader.pages[page_num]
+              media_box = page.mediabox
+              page_height = float(media_box[3] - media_box[1])
+              section_height = page_height / 3
+              
+              for i in range(3):
+                  writer = PdfWriter()
+                  # 创建新页面并裁剪
+                  new_page = page.copy()
+                  new_page.mediabox = [media_box[0], media_box[1] + i * section_height, media_box[2], media_box[1] + (i+1) * section_height]
+                  writer.add_page(new_page)
+                  
+                  # 输出分割后的PDF
+                  part_name = f"{base_name}_p{page_num+1}_{['1top', '2mid', '3bot'][i]}.pdf"
+                  with open(os.path.join(output_dir, part_name), "wb") as output_pdf:
+                      writer.write(output_pdf)
+
+                  # 提取文本内容并保存为TXT文件
+                  doc = fitz.open(pdf_path)
+                  page_pdf = doc.load_page(page_num)
+                  rect = fitz.Rect(0, i * section_height, media_box[2], (i+1) * section_height)
+                  text = page_pdf.get_text("text", clip=rect)
+                  
+                  # 保存提取的文本内容
+                  text_filename = f"{base_name}_p{page_num+1}_{['1top', '2mid', '3bot'][i]}.txt"
+                  with open(os.path.join(output_dir, text_filename), "w", encoding="utf-8") as text_file:
+                      text_file.write(text)
+          
+          EOF
+          done
+
+      - name: Commit and push to private repo
+        run: |
+          cd private-repo
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add .
+          git commit -m "Auto: Processed PDF and split into parts with text"
+          git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
