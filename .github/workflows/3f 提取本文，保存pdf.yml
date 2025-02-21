@@ -1,4 +1,4 @@
-name: 3F PDF Processing
+name: 3F Secure PDF Processing
 
 on:
   workflow_dispatch:
@@ -18,21 +18,13 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip ghostscript
-          pip3 install PyMuPDF
+          sudo apt-get install -y python3-pip ghostscript exiftool qpdf
+          pip3 install PyMuPDF pypdf
 
       - name: Clean output directory
         run: |
           OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          # 安全清理目录内容
-          if [ -d "$OUTPUT_DIR" ]; then
-              find "$OUTPUT_DIR" -mindepth 1 -delete
-              echo "已清理目录内容：$OUTPUT_DIR"
-          else
-              mkdir -p "$OUTPUT_DIR"
-              echo "创建新目录：$OUTPUT_DIR"
-          fi
-          # 确保目录可写
+          [ -d "$OUTPUT_DIR" ] && find "$OUTPUT_DIR" -mindepth 1 -delete || mkdir -p "$OUTPUT_DIR"
           sudo chmod -R 777 "$OUTPUT_DIR"
 
       - name: Process PDFs
@@ -40,20 +32,55 @@ jobs:
           OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
 
           cat << 'EOF' > process_pdf.py
-          import fitz, os, sys, subprocess
+          import fitz, os, sys, subprocess, tempfile
+          from pypdf import PdfWriter, PdfReader
+
+          def deep_clean_pdf(input_path, output_path):
+              """深度清理PDF元数据和隐藏内容"""
+              # 第一步：使用Ghostscript清理
+              with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp1:
+                  subprocess.run([
+                      'gs', '-q',
+                      '-o', tmp1.name,
+                      '-sDEVICE=pdfwrite',
+                      '-dPDFSETTINGS=/prepress',
+                      '-dColorConversionStrategy=/sRGB',
+                      '-dProcessColorModel=/DeviceRGB',
+                      '-dCompatibilityLevel=1.7',
+                      '-dDetectDuplicateImages=true',
+                      '-dCompressFonts=true',
+                      '-dNOPAUSE',
+                      '-dQUIET',
+                      '-dBATCH',
+                      input_path
+                  ], check=True)
+                  
+                  # 第二步：使用pypdf清理元数据
+                  reader = PdfReader(tmp1.name)
+                  writer = PdfWriter()
+                  
+                  for page in reader.pages:
+                      writer.add_page(page)
+                  
+                  # 移除所有元数据
+                  writer.add_metadata({})
+                  
+                  with open(output_path, 'wb') as f:
+                      writer.write(f)
 
           def sanitize_pdf(input_path, output_path, crop_box):
-              """使用Ghostscript物理裁剪PDF"""
-              cmd = [
-                  'gs',
-                  '-q',  # 静默模式
-                  '-o', output_path,
-                  '-sDEVICE=pdfwrite',
-                  '-dPDFSETTINGS=/prepress',
-                  '-c', f'[/CropBox [{crop_box.x0} {crop_box.y0} {crop_box.x1} {crop_box.y1}] /PAGES pdfmark',
-                  '-f', input_path
-              ]
-              subprocess.run(cmd, check=True)
+              """安全裁剪PDF"""
+              with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+                  # 生成临时裁剪文件
+                  doc = fitz.open(input_path)
+                  new_doc = fitz.open()
+                  new_doc.insert_pdf(doc)
+                  new_doc[0].set_cropbox(crop_box)
+                  new_doc.save(tmp.name)
+                  new_doc.close()
+                  
+                  # 深度清理
+                  deep_clean_pdf(tmp.name, output_path)
 
           def split_pdf(pdf_path, output_dir):
               doc = fitz.open(pdf_path)
@@ -72,34 +99,26 @@ jobs:
                       else:
                           crop = fitz.Rect(0, 2*height/3, width, height)
 
-                      # 生成文件名
                       final_name = f"{base}_p{pg+1}_{part}"
-                      temp_pdf = f"{output_dir}/temp_{final_name}.pdf"
                       final_pdf = f"{output_dir}/{final_name}.pdf"
                       txt_file = f"{output_dir}/{final_name}.txt"
                       
                       try:
-                          # 第一步：用PyMuPDF裁剪
-                          new_doc = fitz.open()
-                          new_doc.insert_pdf(doc, from_page=pg, to_page=pg)
-                          new_page = new_doc[0]
-                          new_page.set_cropbox(crop)
-                          new_doc.save(temp_pdf)
-                          new_doc.close()
+                          sanitize_pdf(pdf_path, final_pdf, crop)
+                          
+                          # 文本提取（从清理后的文件）
+                          with fitz.open(final_pdf) as doc:
+                              text = doc[0].get_text()
+                              with open(txt_file, "w", encoding="utf-8") as f:
+                                  f.write(text.strip())
+                          
+                          # 最终验证
+                          subprocess.run(["exiftool", "-all=", "-overwrite_original", final_pdf])
+                          subprocess.run(["qpdf", "--linearize", final_pdf, final_pdf+".tmp"])
+                          os.rename(final_pdf+".tmp", final_pdf)
 
-                          # 第二步：用Ghostscript物理裁剪
-                          sanitize_pdf(temp_pdf, final_pdf, crop)
-                          
-                          # 文本提取
-                          page = fitz.open(final_pdf)[0]
-                          text = page.get_text()
-                          with open(txt_file, "w", encoding="utf-8") as f:
-                              f.write(text.strip())
-                          
-                      finally:
-                          # 清理临时文件
-                          if os.path.exists(temp_pdf):
-                              os.remove(temp_pdf)
+                      except Exception as e:
+                          print(f"处理失败: {final_name} - {str(e)}")
 
           if __name__ == "__main__":
               if len(sys.argv) != 3:
@@ -108,11 +127,19 @@ jobs:
               split_pdf(sys.argv[1], sys.argv[2])
           EOF
 
-          # 处理所有PDF文件
-          find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | while IFS= read -r -d $'\0' file; do
-              echo "正在处理: $file"
+          # 处理根目录PDF
+          find "private-repo/${{ secrets.PRIVATE_DIR }}" -maxdepth 1 -name "*.pdf" -print0 | while IFS= read -r -d $'\0' file; do
+              echo "Processing: $file"
               python3 process_pdf.py "$file" "$OUTPUT_DIR"
           done
+
+      - name: Security verification
+        run: |
+          OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          # 验证元数据
+          find "$OUTPUT_DIR" -name "*.pdf" -exec exiftool {} \; | grep -E 'Creator|Producer|Modify Date'
+          # 验证文件结构
+          find "$OUTPUT_DIR" -name "*.pdf" -exec qpdf --check {} \;
 
       - name: Commit changes
         run: |
@@ -120,6 +147,5 @@ jobs:
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
           git add .
-          git status  # 查看变更状态
-          git commit -m "自动处理PDF更新 [$(date +'%Y%m%d-%H%M%S')]"
+          git commit -m "Secure PDF Process [$(date +'%Y%m%d-%H%M%S')]"
           git push "https://${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git"
