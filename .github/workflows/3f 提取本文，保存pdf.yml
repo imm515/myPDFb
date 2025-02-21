@@ -1,4 +1,4 @@
-name: 3f PDF Processing
+name: 3F PDF Processing
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils python3-pip cups-pdf
+          sudo apt-get install -y poppler-utils python3-pip cups-pdf cups-client
           sudo usermod -aG lpadmin $USER  # 添加用户到打印组
           pip3 install PyMuPDF
 
@@ -31,6 +31,14 @@ jobs:
           sudo sed -i "s|^PassThrough.*|PassThrough jpeg|" /etc/cups/cups-pdf.conf
           sudo sed -i "s|^FilePrefix.*|FilePrefix ''|" /etc/cups/cups-pdf.conf
           sudo systemctl restart cups
+
+      - name: Verify CUPS service
+        run: |
+          sudo systemctl status cups
+
+      - name: Check lpr command
+        run: |
+          which lpr || echo "lpr not found"
 
       - name: Process PDFs
         run: |
