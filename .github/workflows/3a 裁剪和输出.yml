@@ -43,32 +43,32 @@ jobs:
           # 初始化输出目录
           OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
           mkdir -p "$OUTPUT_DIR"
-
+      
           # 安全读取文件列表（处理含空格路径）
           mapfile -d '' pdf_files < <(find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | sort -z)
-
+      
           echo "Found ${#pdf_files[@]} PDF files:"
           printf '  - %s\n' "${pdf_files[@]}"
-
+      
           for pdf_path in "${pdf_files[@]}"; do
               filename=$(basename "$pdf_path")
               echo "Processing: $filename"
-
+      
               PDF_PATH="$pdf_path" OUTPUT_DIR="$OUTPUT_DIR" python3 <<EOF
           from PyPDF2 import PdfReader, PdfWriter
           import os
-
+      
           pdf_path = os.getenv("PDF_PATH")
           output_dir = os.getenv("OUTPUT_DIR")
           base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-
+      
           reader = PdfReader(pdf_path)
           for page_num, page in enumerate(reader.pages, 1):
               # 获取页面尺寸
-              media_box = page.mediabox
-              width = float(media_box.width)
-              height = float(media_box.height)
-
+              media_box = page["/MediaBox"]  # 使用新版本的API访问mediabox
+              width = float(media_box[2])  # mediabox的第三个值是宽度
+              height = float(media_box[3])  # mediabox的第四个值是高度
+      
               # 切割三部分
               for part_num, (part_name, (y0, y1)) in enumerate([
                   ("1top", (height * 2/3, height)),
@@ -77,10 +77,9 @@ jobs:
               ], 1):
                   writer = PdfWriter()
                   new_page = page.copy()
-                  new_page.mediabox.upper_right = (width, y1)
-                  new_page.mediabox.lower_left = (0, y0)
+                  new_page["/MediaBox"] = [0, y0, width, y1]  # 设置新的mediabox
                   writer.add_page(new_page)
-
+      
                   # 保存切割后的PDF
                   output_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.pdf"
                   with open(output_path, "wb") as output_pdf:
