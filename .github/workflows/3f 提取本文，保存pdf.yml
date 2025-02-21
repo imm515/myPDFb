@@ -1,4 +1,4 @@
-name: PDF Split and Process
+name: 3f 提取本文，保存pdf
 
 on:
   workflow_dispatch:
