@@ -76,6 +76,11 @@ jobs:
                           print(f"Warning: CropBox for {part_name} is outside MediaBox. Adjusting...")
                           crop_rect = crop_rect.intersect(media_box)  # 将裁切区域限制在 MediaBox 内
 
+                          # 如果裁切区域无效（完全超出 MediaBox），跳过该部分
+                          if crop_rect.is_empty:
+                              print(f"Skipping {part_name} because it is completely outside MediaBox.")
+                              continue
+
                       # 创建一个新的 PDF 文档
                       new_doc = fitz.open()
                       new_page = new_doc.new_page(width=crop_rect.width, height=crop_rect.height)
