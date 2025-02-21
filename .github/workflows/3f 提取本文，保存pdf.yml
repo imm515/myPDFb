@@ -44,16 +44,23 @@ jobs:
         run: |
           lpstat -p PDF
 
+      - name: Create output directory
+        run: |
+          OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          mkdir -p "$OUTPUT_DIR"
+
       - name: Process PDFs
         run: |
           export PATH="/usr/bin:/usr/sbin:$PATH"
           OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | while IFS= read -r -d $'\0' file; do
-            python3 <<EOF
-          import fitz, os, subprocess, time, glob
-          def split_pdf(path):
-              doc = fitz.open(path)
-              base = os.path.splitext(os.path.basename(path))[0]
+
+          # 创建临时 Python 脚本
+          cat << 'EOF' > process_pdf.py
+          import fitz, os, subprocess, time, glob, sys
+
+          def split_pdf(pdf_path, output_dir):
+              doc = fitz.open(pdf_path)
+              base = os.path.splitext(os.path.basename(pdf_path))[0]
               for pg in range(len(doc)):
                   for part in ["1top", "2mid", "3bot"]:
                       # 创建分块PDF
@@ -66,16 +73,26 @@ jobs:
                       subprocess.run(["lp", "-d", "PDF", temp_pdf])
                       # 验证生成结果
                       for _ in range(5):
-                          if glob.glob(f"{OUTPUT_DIR}/{temp_pdf}"):
+                          if glob.glob(f"{output_dir}/{temp_pdf}"):
                               break
                           time.sleep(2)
                       # 提取文本
                       text = new_doc[0].get_text()
-                      with open(f"{OUTPUT_DIR}/{base}_p{pg+1}_{part}.txt", "w") as f:
+                      with open(f"{output_dir}/{base}_p{pg+1}_{part}.txt", "w") as f:
                           f.write(text)
                       os.remove(temp_pdf)
-          split_pdf("$file")
+
+          if __name__ == "__main__":
+              if len(sys.argv) != 3:
+                  print("Usage: python process_pdf.py <input_pdf> <output_dir>")
+                  sys.exit(1)
+              split_pdf(sys.argv[1], sys.argv[2])
           EOF
+
+          # 处理所有 PDF 文件
+          find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | while IFS= read -r -d $'\0' file; do
+              echo "Processing: $file"
+              python3 process_pdf.py "$file" "$OUTPUT_DIR"
           done
 
       - name: Commit changes
