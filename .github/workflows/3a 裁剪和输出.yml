@@ -30,10 +30,10 @@ jobs:
           else
             mkdir -p "$OUTPUT_DIR"
           fi
-
+  
       - name: List PDF files in private repo
         run: |
-          find private-repo/${{ secrets.PRIVATE_DIR }} -name "*.pdf" | sort > pdf_files.txt
+          find private-repo/${{ secrets.PRIVATE_DIR }} -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
 
       - name: Process PDF files and cut pages into three parts
         run: |
@@ -63,7 +63,7 @@ jobs:
           for page_num in range(len(reader.pages)):
               page = reader.pages[page_num]
               media_box = page.mediabox
-              page_height = media_box.top - media_box.bottom
+              page_height = float(media_box.top) - float(media_box.bottom)
               section_height = page_height / 3
               
               for i in range(3):
@@ -71,15 +71,16 @@ jobs:
                   new_page = page.copy()
                   
                   # 计算新页面的上下边界
-                  new_bottom = media_box.bottom + i * section_height
+                  new_bottom = float(media_box.bottom) + i * section_height
                   new_top = new_bottom + section_height
                   new_mediabox = [
-                      media_box.left,
+                      float(media_box.left),
                       new_bottom,
-                      media_box.right,
+                      float(media_box.right),
                       new_top
                   ]
-                  new_page.mediabox = new_mediabox
+                  new_page.mediabox.upper_left = (new_mediabox[0], new_mediabox[3])
+                  new_page.mediabox.lower_right = (new_mediabox[2], new_mediabox[1])
                   writer.add_page(new_page)
                   
                   part_name = f"{base_name}_p{page_num+1}_{['1top', '2mid', '3bot'][i]}.pdf"
@@ -89,7 +90,7 @@ jobs:
                   # 提取文本
                   doc = fitz.open(pdf_path)
                   page_pdf = doc.load_page(page_num)
-                  rect = fitz.Rect(0, new_bottom, media_box.right, new_top)
+                  rect = fitz.Rect(0, new_bottom, float(media_box.right), new_top)
                   text = page_pdf.get_text("text", clip=rect)
                   
                   text_filename = f"{base_name}_p{page_num+1}_{['1top', '2mid', '3bot'][i]}.txt"
