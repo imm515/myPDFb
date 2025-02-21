@@ -1,4 +1,4 @@
-name: 3g 设法真正clean
+name: 3g 提取本文，保存pdf
 
 on:
   workflow_dispatch:
@@ -22,8 +22,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils python3-pip ghostscript
-          pip3 install PyMuPDF  # 直接安装 PyMuPDF 的 release 版本
+          sudo apt-get install -y poppler-utils python3-pip
+          pip3 install PyMuPDF pdfCropMargins  # 安装 PyMuPDF 和 pdfCropMargins
 
       - name: Clean output directory
         run: |
@@ -70,15 +70,8 @@ jobs:
                       new_doc.save(output_pdf, deflate=True)
                       new_doc.close()
 
-                      # 使用 Ghostscript 进一步优化 PDF
-                      optimized_pdf = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}_optimized.pdf"
-                      subprocess.run([
-                          "gs", "-o", optimized_pdf,
-                          "-sDEVICE=pdfwrite",
-                          "-dPDFSETTINGS=/prepress",
-                          output_pdf
-                      ])
-                      os.replace(optimized_pdf, output_pdf)  # 替换原文件
+                      # 使用 pdfCropMargins 裁剪 PDF
+                      subprocess.run(["pdf-crop-margins", "-p", "0", "-a", "-1", output_pdf])
 
                       # 保存文本
                       txt_path = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}.txt"
