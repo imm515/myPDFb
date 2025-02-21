@@ -1,4 +1,4 @@
-name: 3d 保存参数优化
+name: 3d 二次压缩
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils python3-pip
+          sudo apt-get install -y poppler-utils python3-pip ghostscript
           pip3 install PyMuPDF
 
       - name: Clean 1cut directory
@@ -85,25 +85,17 @@ jobs:
                       new_doc = fitz.open()
                       new_page = new_doc.new_page(width=width, height=(y1 - y0))
 
-                      # 将裁剪区域插入新页面，并避免资源重复
+                      # 将裁剪区域插入新页面
                       new_page.show_pdf_page(
                           fitz.Rect(0, 0, width, (y1 - y0)),  # 目标区域
                           doc,  # 原始文档
                           page_num,  # 原始页面编号
-                          clip=crop_rect,  # 裁剪区域
+                          clip=crop_rect  # 裁剪区域
                       )
 
-                      # 保存裁剪后的 PDF，并启用深度压缩
+                      # 保存裁剪后的 PDF
                       output_path = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}.pdf"
-                      new_doc.save(
-                          output_path,
-                          deflate=True,        # 启用压缩
-                          deflate_images=True, # 压缩图片
-                          deflate_fonts=True,  # 压缩字体
-                          garbage=4,           # 清理未使用的对象
-                          clean=True,          # 清理冗余内容
-                          linear=True          # 线性化优化
-                      )
+                      new_doc.save(output_path)
                       new_doc.close()
 
           if __name__ == "__main__":
@@ -118,11 +110,21 @@ jobs:
               python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
           done
 
+      - name: Compress PDF files using Ghostscript
+        run: |
+          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
+          find "$OUTPUT_DIR" -name "*.pdf" | while read -r file; do
+              echo "Compressing: $file"
+              gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook \
+                 -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${file%.pdf}_compressed.pdf" "$file"
+              mv "${file%.pdf}_compressed.pdf" "$file"
+          done
+
       - name: Commit and push to private repo
         run: |
           cd private-repo
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
           git add .
-          git commit -m "Auto: Processed PDF images"
+          git commit -m "Auto: Processed and compressed PDF images"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
