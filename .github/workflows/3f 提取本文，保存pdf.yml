@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils python3-pip
-          pip3 install PyMuPDF  # 直接安装 PyMuPDF 的 release 版本
+          pip3 install PyMuPDF
 
       - name: Clean output directory
         run: |
@@ -36,7 +36,7 @@ jobs:
           OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
           
           cat << 'EOF' > process_pdf.py
-          import fitz  # PyMuPDF
+          import fitz
           import os
           import sys
 
@@ -62,7 +62,7 @@ jobs:
                       text = new_page.get_textbox(fitz.Rect(0, 0, w, y1 - y0))
 
                       output_pdf = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}.pdf"
-                      new_doc.save(output_pdf, deflate=True, clean=True)  # 使用 clean=True 移除裁剪框之外的内容
+                      new_doc.save(output_pdf, deflate=True)
                       new_doc.close()
 
                       txt_path = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}.txt"
