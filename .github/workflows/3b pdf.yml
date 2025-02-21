@@ -1,4 +1,4 @@
-name: 3b 换工具
+name: 3b pdf
 
 on:
   workflow_dispatch:
