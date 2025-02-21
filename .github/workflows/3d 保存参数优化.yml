@@ -91,7 +91,6 @@ jobs:
                           doc,  # 原始文档
                           page_num,  # 原始页面编号
                           clip=crop_rect,  # 裁剪区域
-                          as_image=False  # 避免资源重复
                       )
 
                       # 保存裁剪后的 PDF，并启用深度压缩
