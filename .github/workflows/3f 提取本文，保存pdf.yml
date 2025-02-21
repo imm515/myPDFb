@@ -1,4 +1,4 @@
-name: 3f 提取本文，保存pdf
+name: PDF Split and Process
 
 on:
   workflow_dispatch:
@@ -31,11 +31,10 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           rm -rf "$OUTPUT_DIR"/*
 
-      - name: Process PDF with optimized splitting
+      - name: Process PDF with fixed logic
         run: |
           OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
           
-          # 写入优化后的 Python 脚本
           cat << 'EOF' > process_pdf.py
           import fitz
           import os
@@ -58,14 +57,14 @@ jobs:
                       new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
                       new_page = new_doc[0]
                       new_page.set_cropbox(fitz.Rect(0, y0, w, y1))
-                      
-                      # 保存时启用压缩
+
+                      # 在关闭前提取文本
+                      text = new_page.get_textbox(fitz.Rect(0, 0, w, y1 - y0))
+
                       output_pdf = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}.pdf"
                       new_doc.save(output_pdf, deflate=True)
                       new_doc.close()
 
-                      # 提取文本
-                      text = new_page.get_textbox(fitz.Rect(0, 0, w, y1 - y0))
                       txt_path = f"{output_dir}/{base_name}_p{page_num+1}_{part_name}.txt"
                       with open(txt_path, "w", encoding="utf-8") as f:
                           f.write(text)
@@ -77,7 +76,7 @@ jobs:
               split_pdf(sys.argv[1], sys.argv[2])
           EOF
 
-          # 处理所有 PDF 文件
+          # 处理所有 PDF（支持文件名含空格）
           find "private-repo/${{ secrets.PRIVATE_DIR }}" -maxdepth 1 -name "*.pdf" -print0 | while IFS= read -r -d $'\0' pdf_path; do
               echo "Processing: $pdf_path"
               python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
@@ -89,5 +88,5 @@ jobs:
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
           git add .
-          git commit -m "Auto: Optimized PDF splitting with compression"
+          git commit -m "Auto: Fixed page None error in PDF processing"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
