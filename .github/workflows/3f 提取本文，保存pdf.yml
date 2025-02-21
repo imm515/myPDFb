@@ -1,4 +1,4 @@
-name: 3f 提取本文，保存pdf，压缩元素
+name: 3f 提取本文，保存pdf
 
 on:
   workflow_dispatch:
@@ -51,20 +51,6 @@ jobs:
           import fitz  # PyMuPDF
           import os
           import sys
-          from PIL import Image
-          import io
-
-          def compress_image(image_data, quality=75):
-              """
-              压缩图片
-              :param image_data: 图片的二进制数据
-              :param quality: 压缩质量（0-100）
-              :return: 压缩后的图片二进制数据
-              """
-              img = Image.open(io.BytesIO(image_data))
-              buf = io.BytesIO()
-              img.save(buf, format="JPEG", quality=quality)  # 保存为 JPEG 格式并压缩
-              return buf.getvalue()
 
           pdf_path = sys.argv[1]
           output_dir = sys.argv[2]
@@ -77,23 +63,6 @@ jobs:
               # 获取页面尺寸
               rect = page.rect
               w, h = rect.width, rect.height
-
-              # 获取页面中的所有图片
-              image_list = page.get_images(full=True)
-              if image_list:
-                  print(f"Found {len(image_list)} images on page {page_num}")
-
-              # 压缩并替换页面中的图片
-              for img_index, img in enumerate(image_list):
-                  xref = img[0]  # 图片的 xref
-                  base_image = doc.extract_image(xref)
-                  image_data = base_image["image"]  # 图片的二进制数据
-
-                  # 压缩图片
-                  compressed_image_data = compress_image(image_data, quality=75)
-
-                  # 替换原图片
-                  doc.update_image(xref, compressed_image_data)
 
               # 切割三部分
               for part_num, (part_name, (y0, y1)) in enumerate([
@@ -142,3 +111,4 @@ jobs:
           git add .
           git commit -m "Auto: Processed PDF images and extracted text"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
+          
