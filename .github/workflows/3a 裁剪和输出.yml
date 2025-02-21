@@ -1,4 +1,4 @@
-name: 3a cut换一个库
+name: 3a 语法错误
 
 on:
   workflow_dispatch:
@@ -52,9 +52,15 @@ jobs:
           echo "Found ${#pdf_files[@]} PDF files:"
           printf '  - %s\n' "${pdf_files[@]}"
 
-          for pdf_path in "${pdf_files[@]}"; do
-              filename=$(basename "$pdf_path")
-              echo "Processing: $filename"
+          # 将 Python 逻辑写入临时脚本
+          cat << 'EOF' > process_pdf.py
+          from pdfCropMargins import crop
+          import os
+          import sys
+
+          def process_pdf(pdf_path, output_dir):
+              filename = os.path.basename(pdf_path)
+              base_name = os.path.splitext(filename)[0]
 
               # 切割三部分
               for part_num, (part_name, (y0, y1)) in enumerate([
@@ -62,23 +68,23 @@ jobs:
                   ("2mid", (33.33, 66.66)),
                   ("3bot", (0, 33.33))
               ], 1):
-                  output_path = f"{OUTPUT_DIR}/{filename}_p{part_name}.pdf"
-                  PDF_PATH="$pdf_path" OUTPUT_PATH="$output_path" Y0="$y0" Y1="$y1" python3 <<EOF
-              from pdfCropMargins import crop
-              import os
+                  output_path = f"{output_dir}/{base_name}_p{part_name}.pdf"
+                  crop(
+                      [pdf_path],
+                      outputPath=output_path,
+                      percentRetain=(0, y0, 100, y1)  # 定义裁剪区域
+                  )
 
-              pdf_path = os.getenv("PDF_PATH")
-              output_path = os.getenv("OUTPUT_PATH")
-              y0 = float(os.getenv("Y0"))
-              y1 = float(os.getenv("Y1"))
+          if __name__ == "__main__":
+              pdf_path = sys.argv[1]
+              output_dir = sys.argv[2]
+              process_pdf(pdf_path, output_dir)
+          EOF
 
-              # 裁剪PDF
-              crop(
-                  [pdf_path],
-                  outputPath=output_path,
-                  percentRetain=(0, y0, 100, y1)  # 定义裁剪区域
-              )
-              EOF
+          # 处理每个 PDF 文件
+          for pdf_path in "${pdf_files[@]}"; do
+              echo "Processing: $pdf_path"
+              python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
           done
 
       - name: Commit and push to private repo
