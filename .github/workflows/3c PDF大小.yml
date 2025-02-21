@@ -1,4 +1,4 @@
-name: 3b 启用压缩
+name: 3c 启用压缩
 
 on:
   workflow_dispatch:
