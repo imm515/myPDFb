@@ -98,7 +98,6 @@ jobs:
                       new_doc.save(
                           output_path,
                           deflate=True,  # 启用压缩
-                          optimize=True,  # 启用优化
                           garbage=4,      # 清理未使用的对象
                           clean=True      # 清理冗余内容
                       )
