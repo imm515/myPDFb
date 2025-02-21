@@ -21,10 +21,19 @@ jobs:
           sudo apt-get install -y python3-pip ghostscript
           pip3 install PyMuPDF
 
-      - name: Create output directory
+      - name: Clean output directory
         run: |
           OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          mkdir -p "$OUTPUT_DIR"
+          # 安全清理目录内容
+          if [ -d "$OUTPUT_DIR" ]; then
+              find "$OUTPUT_DIR" -mindepth 1 -delete
+              echo "已清理目录内容：$OUTPUT_DIR"
+          else
+              mkdir -p "$OUTPUT_DIR"
+              echo "创建新目录：$OUTPUT_DIR"
+          fi
+          # 确保目录可写
+          sudo chmod -R 777 "$OUTPUT_DIR"
 
       - name: Process PDFs
         run: |
@@ -37,6 +46,7 @@ jobs:
               """使用Ghostscript物理裁剪PDF"""
               cmd = [
                   'gs',
+                  '-q',  # 静默模式
                   '-o', output_path,
                   '-sDEVICE=pdfwrite',
                   '-dPDFSETTINGS=/prepress',
@@ -62,24 +72,34 @@ jobs:
                       else:
                           crop = fitz.Rect(0, 2*height/3, width, height)
 
-                      # 生成临时文件名
-                      temp_pdf = f"{output_dir}/temp_{base}_p{pg+1}_{part}.pdf"
-                      final_pdf = f"{output_dir}/{base}_p{pg+1}_{part}.pdf"
+                      # 生成文件名
+                      final_name = f"{base}_p{pg+1}_{part}"
+                      temp_pdf = f"{output_dir}/temp_{final_name}.pdf"
+                      final_pdf = f"{output_dir}/{final_name}.pdf"
+                      txt_file = f"{output_dir}/{final_name}.txt"
                       
-                      # 第一步：用PyMuPDF裁剪
-                      new_doc = fitz.open()
-                      new_doc.insert_pdf(doc, from_page=pg, to_page=pg)
-                      new_page = new_doc[0]
-                      new_page.set_cropbox(crop)
-                      new_doc.save(temp_pdf)
-                      new_doc.close()
+                      try:
+                          # 第一步：用PyMuPDF裁剪
+                          new_doc = fitz.open()
+                          new_doc.insert_pdf(doc, from_page=pg, to_page=pg)
+                          new_page = new_doc[0]
+                          new_page.set_cropbox(crop)
+                          new_doc.save(temp_pdf)
+                          new_doc.close()
 
-                      # 第二步：用Ghostscript物理裁剪
-                      sanitize_pdf(temp_pdf, final_pdf, crop)
-                      os.remove(temp_pdf)  # 删除临时文件
-
-                      # 文本提取保持不变...
-                      # [此处保留原有文本提取代码]
+                          # 第二步：用Ghostscript物理裁剪
+                          sanitize_pdf(temp_pdf, final_pdf, crop)
+                          
+                          # 文本提取
+                          page = fitz.open(final_pdf)[0]
+                          text = page.get_text()
+                          with open(txt_file, "w", encoding="utf-8") as f:
+                              f.write(text.strip())
+                          
+                      finally:
+                          # 清理临时文件
+                          if os.path.exists(temp_pdf):
+                              os.remove(temp_pdf)
 
           if __name__ == "__main__":
               if len(sys.argv) != 3:
@@ -88,9 +108,9 @@ jobs:
               split_pdf(sys.argv[1], sys.argv[2])
           EOF
 
-          # 处理PDF文件
+          # 处理所有PDF文件
           find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | while IFS= read -r -d $'\0' file; do
-              echo "Processing: $file"
+              echo "正在处理: $file"
               python3 process_pdf.py "$file" "$OUTPUT_DIR"
           done
 
@@ -100,5 +120,6 @@ jobs:
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
           git add .
-          git commit -m "安全裁剪PDF更新"
+          git status  # 查看变更状态
+          git commit -m "自动处理PDF更新 [$(date +'%Y%m%d-%H%M%S')]"
           git push "https://${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git"
