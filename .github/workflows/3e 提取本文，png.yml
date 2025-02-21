@@ -40,7 +40,7 @@ jobs:
           echo "Found PDF files:"
           cat pdf_files.txt
 
-      - name: Process PDF files and cut pages into three parts
+      - name: Extract text and convert PDF to PNG
         run: |
           # 初始化输出目录
           OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
@@ -61,39 +61,55 @@ jobs:
           doc = fitz.open(pdf_path)
 
           for page_num, page in enumerate(doc, 1):
-              # 将页面渲染为图像，分辨率提高 2 倍
-              pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 分辨率提高 2 倍
-              img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-              
-              # 保存完整页面
-              full_page = os.path.join(output_dir, f"{base_name}_p{page_num}.png")
-              img.save(full_page, "PNG")
-              
-              # 切割三部分
-              w, h = img.size
-              for part_num, (part_name, (x0, y0, x1, y1)) in enumerate([
-                  ("1top", (0, 0, w, h//3)),
-                  ("2mid", (0, h//3, w, h*2//3)),
-                  ("3bot", (0, h*2//3, w, h))
+              # 获取页面尺寸
+              rect = page.rect
+              w, h = rect.width, rect.height
+
+              # 按上、中、下三部分提取文本
+              for part_num, (part_name, (y0, y1)) in enumerate([
+                  ("1top", (0, h/3)),
+                  ("2mid", (h/3, 2*h/3)),
+                  ("3bot", (2*h/3, h))
               ], 1):
-                  # 保存切割后的图像
-                  crop = img.crop((x0, y0, x1, y1))
-                  crop.save(f"{output_dir}/{base_name}_p{page_num}_{part_name}.png")
-                  
-                  # 提取对应区域的文本
-                  # 注意：提取框的坐标和尺寸需要按比例放大 2 倍
-                  rect = fitz.Rect(x0 / 2, y0 / 2, x1 / 2, y1 / 2)  # 按比例缩小回原始 PDF 的坐标
-                  text = page.get_textbox(rect)
+                  # 定义文本提取区域
+                  text_rect = fitz.Rect(0, y0, w, y1)
+                  text = page.get_textbox(text_rect)
                   txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"
                   with open(txt_path, "w", encoding="utf-8") as f:
                       f.write(text)
+
+              # 将页面渲染为图像（PNG）
+              pix = page.get_pixmap(matrix=fitz.Matrix(1.2, 1.2))  # 分辨率放大 1.2 倍
+              img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+              # 切割图像为上、中、下三部分
+              w, h = img.size
+              for part_num, (part_name, (y0, y1)) in enumerate([
+                  ("1top", (0, h//3)),
+                  ("2mid", (h//3, 2*h//3)),
+                  ("3bot", (2*h//3, h))
+              ], 1):
+                  # 切割图像
+                  crop = img.crop((0, y0, w, y1))
+                  # 保存切割后的图像（PNG 格式）
+                  img_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.png"
+                  crop.save(img_path, "PNG")
           EOF
       
-          # 处理每个 PDF 文件
-          while IFS= read -r pdf_path; do
-              echo "Processing: $pdf_path"
-              python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
-          done < pdf_files.txt
+          # 读取 PDF 文件路径到数组中
+          mapfile -t pdf_files < pdf_files.txt
+
+          # 检查是否读取到文件
+          if [ ${#pdf_files[@]} -eq 0 ]; then
+            echo "No PDF files found!"
+            exit 1
+          fi
+
+          # 循环处理每个 PDF 文件
+          for pdf_path in "${pdf_files[@]}"; do
+            echo "Processing: $pdf_path"
+            python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
+          done
 
       - name: Commit and push to private repo
         run: |
@@ -101,5 +117,5 @@ jobs:
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
           git add .
-          git commit -m "Auto: Processed PDF images and extracted text"
+          git commit -m "Auto: Extracted text and converted PDF to PNG"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
