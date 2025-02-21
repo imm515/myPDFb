@@ -1,4 +1,4 @@
-name: 3e 提取本文，png格式
+name: 3e 提取本文，png
 
 on:
   workflow_dispatch:
