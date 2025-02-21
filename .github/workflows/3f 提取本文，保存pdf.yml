@@ -21,8 +21,10 @@ jobs:
           sudo apt-get install -y poppler-utils python3-pip cups-pdf cups-client
           sudo usermod -aG lpadmin $USER  # 添加用户到打印组
           pip3 install PyMuPDF
-          # 检查 lpr 是否安装
+          # 检查 lpr 的路径
           which lpr || echo "lpr not found"
+          ls -l /usr/bin/lpr || echo "/usr/bin/lpr not found"
+          ls -l /usr/sbin/lpr || echo "/usr/sbin/lpr not found"
 
       - name: Configure CUPS-PDF
         run: |
@@ -44,6 +46,7 @@ jobs:
 
       - name: Process PDFs
         run: |
+          export PATH="/usr/bin:/usr/sbin:$PATH"
           OUTPUT_DIR="$GITHUB_WORKSPACE/private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
           find "private-repo/${{ secrets.PRIVATE_DIR }}" -name "*.pdf" -print0 | while IFS= read -r -d $'\0' file; do
             python3 <<EOF
@@ -60,7 +63,7 @@ jobs:
                       temp_pdf = f"{base}_p{pg+1}_{part}.pdf"
                       new_doc.save(temp_pdf)
                       # 打印并等待
-                      subprocess.run(["/usr/bin/lpr", "-P", "PDF", temp_pdf])
+                      subprocess.run(["/usr/sbin/lpr", "-P", "PDF", temp_pdf])
                       # 验证生成结果
                       for _ in range(5):
                           if glob.glob(f"{OUTPUT_DIR}/{temp_pdf}"):
