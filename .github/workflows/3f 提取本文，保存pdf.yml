@@ -21,6 +21,8 @@ jobs:
           sudo apt-get install -y poppler-utils python3-pip cups-pdf cups-client
           sudo usermod -aG lpadmin $USER  # 添加用户到打印组
           pip3 install PyMuPDF
+          # 检查 lpr 是否安装
+          which lpr || echo "lpr not found"
 
       - name: Configure CUPS-PDF
         run: |
@@ -36,9 +38,9 @@ jobs:
         run: |
           sudo systemctl status cups
 
-      - name: Check lpr command
+      - name: Verify CUPS-PDF printer
         run: |
-          which lpr || echo "lpr not found"
+          lpstat -p PDF
 
       - name: Process PDFs
         run: |
@@ -58,7 +60,7 @@ jobs:
                       temp_pdf = f"{base}_p{pg+1}_{part}.pdf"
                       new_doc.save(temp_pdf)
                       # 打印并等待
-                      subprocess.run(["lpr", "-P", "PDF", temp_pdf])
+                      subprocess.run(["/usr/bin/lpr", "-P", "PDF", temp_pdf])
                       # 验证生成结果
                       for _ in range(5):
                           if glob.glob(f"{OUTPUT_DIR}/{temp_pdf}"):
