@@ -93,11 +93,11 @@ jobs:
 
           # 设置字体
           try:
-              font = ImageFont.truetype("arial.ttf", 8)
+              font = ImageFont.truetype("LiberationSans-Regular.ttf", 8)  # 使用 Liberation Sans 字体
           except IOError:
-              # 如果系统没有 Arial 字体，使用默认字体
-              font = ImageFont.load_default()
-              print("::warning::Arial 字体未找到，使用默认字体")
+              font = ImageFont.load_default()  # 如果 Liberation Sans 未找到，使用默认字体
+              print("::warning::Liberation Sans 字体未找到，使用默认字体")
+              
 
           # 匹配文件并复制
           copied_files = []
