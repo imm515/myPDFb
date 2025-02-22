@@ -91,12 +91,12 @@ jobs:
           # 创建目标目录结构
           target_dir.mkdir(parents=True, exist_ok=True)
 
-          # 设置字体
+          # 设置字体为等宽字体
           try:
-              font = ImageFont.truetype("LiberationSans-Regular.ttf", 8)  # 使用 Liberation Sans 字体
+              font = ImageFont.truetype("LiberationMono-Regular.ttf", 8)  # 使用 Liberation Mono 等宽字体
           except IOError:
-              font = ImageFont.load_default()  # 如果 Liberation Sans 未找到，使用默认字体
-              print("::warning::Liberation Sans 字体未找到，使用默认字体")
+              font = ImageFont.load_default()  # 如果 Liberation Mono 未找到，使用默认字体
+              print("::warning::Liberation Mono 字体未找到，使用默认字体")
               
 
           # 匹配文件并复制
