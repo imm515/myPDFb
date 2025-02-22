@@ -93,7 +93,7 @@ jobs:
 
           # 设置字体
           try:
-              font = ImageFont.truetype("arial.ttf", 9)
+              font = ImageFont.truetype("arial.ttf", 8)
           except IOError:
               # 如果系统没有 Arial 字体，使用默认字体
               font = ImageFont.load_default()
