@@ -1,1 +1,201 @@
 
+name: 4merge
+
+on:
+  workflow_dispatch:
+
+  workflow_run:
+    workflows: ["3find"]
+    types:
+      - completed
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pdf-merger:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/3查找
+      OUTPUT_DIR: ${{ secrets.PRIVATE_DIR }}/4拼接PDF
+
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.PRIVATE_REPO }}
+          token: ${{ secrets.PAT }}
+          path: private-repo
+          ref: main
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libjpeg-dev zlib1g-dev
+          pip install pymupdf Pillow reportlab
+
+      - name: Prepare workspace
+        run: |
+          cd private-repo
+          mkdir -p "$OUTPUT_DIR"
+          echo "开始拼接PDF" > merge.log
+
+      - name: Merge PDFs with resource optimization
+        run: |
+          cd private-repo
+          python3 <<EOF
+          import os
+          import fitz  # PyMuPDF
+          from pathlib import Path
+          import re
+
+          # 配置参数
+          SOURCE_DIR = Path(os.getenv("SOURCE_DIR"))
+          OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR"))
+          OUTPUT_PDF_PATH = OUTPUT_DIR / "merged_optimized.pdf"
+
+          # 获取排序后的PDF文件列表
+          def natural_sort_key(s):
+              return [int(text) if text.isdigit() else text.lower()
+                      for text in re.split(r'(\d+)', os.path.basename(s))]
+
+          pdf_files = []
+          for root, _, files in os.walk(SOURCE_DIR):
+              for f in files:
+                  if f.lower().endswith('.pdf'):
+                      pdf_files.append(Path(root) / f)
+          pdf_files.sort(key=natural_sort_key)
+
+          # 创建一个新的PDF文档
+          new_pdf = fitz.open()
+
+          # 用于存储已提取的资源
+          shared_resources = {}
+
+          # 处理每个PDF文件
+          for pdf_file in pdf_files:
+              print(f"处理文件：{pdf_file.name}")
+              pdf_doc = fitz.open(pdf_file)
+              
+              # 提取并共享资源
+              for page in pdf_doc:
+                  # 提取图片资源
+                  for img in page.get_images():
+                      xref = img[0]
+                      if xref not in shared_resources:
+                          shared_resources[xref] = pdf_doc.extract_image(xref)["image"]
+                  
+                  # 提取矢量图和字体资源
+                  for xref in page.get_contents():
+                      if xref not in shared_resources:
+                          shared_resources[xref] = pdf_doc.xref_stream(xref)
+
+              # 将页面添加到新PDF
+              new_pdf.insert_pdf(pdf_doc)
+
+              pdf_doc.close()
+
+          # 优化资源
+          for page in new_pdf:
+              # 替换重复资源
+              for img in page.get_images():
+                  xref = img[0]
+                  if xref in shared_resources:
+                      page.replace_image(xref, pixmap=fitz.Pixmap(shared_resources[xref]))
+              
+              # 替换重复矢量图和字体
+              for xref in page.get_contents():
+                  if xref in shared_resources:
+                      page.set_contents(shared_resources[xref])
+
+          # 保存优化后的PDF
+          new_pdf.save(OUTPUT_PDF_PATH, garbage=4, deflate=True)
+          new_pdf.close()
+
+          print(f"成功生成优化后的PDF：{OUTPUT_PDF_PATH}")
+          EOF
+
+      - name: Merge TXT files with strict check
+        run: |
+          cd private-repo
+          python3 <<EOF
+          import os
+
+          source_dir = os.getenv("SOURCE_DIR")
+          output_dir = os.getenv("OUTPUT_DIR")
+          output_txt_path = os.path.join(output_dir, "merged.txt")
+
+          # 获取所有PDF和TXT文件
+          pdf_files = []
+          txt_files = []
+          for root, _, files in os.walk(source_dir):
+              for f in files:
+                  if f.lower().endswith('.pdf'):
+                      pdf_files.append(os.path.join(root, f))
+                  elif f.lower().endswith('.txt'):
+                      txt_files.append(os.path.join(root, f))
+
+          # 按文件名排序
+          pdf_files.sort()
+          txt_files.sort()
+
+          # 检查PDF和TXT文件是否一一对应
+          missing_txt_files = []
+          for pdf_file in pdf_files:
+              txt_file = os.path.splitext(pdf_file)[0] + '.txt'
+              if not os.path.exists(txt_file):
+                  missing_txt_files.append(os.path.basename(pdf_file))
+
+          if missing_txt_files:
+              print("::error::以下PDF文件缺少对应的TXT文件：")
+              for file in missing_txt_files:
+                  print(f"- {file}")
+              exit(1)
+
+          # 检查TXT文件是否有多余的（没有对应的PDF文件）
+          extra_txt_files = []
+          for txt_file in txt_files:
+              pdf_file = os.path.splitext(txt_file)[0] + '.pdf'
+              if not os.path.exists(pdf_file):
+                  extra_txt_files.append(os.path.basename(txt_file))
+
+          if extra_txt_files:
+              print("::error::以下TXT文件缺少对应的PDF文件：")
+              for file in extra_txt_files:
+                  print(f"- {file}")
+              exit(1)
+
+          # 合并TXT文件内容
+          with open(output_txt_path, 'w', encoding='utf-8') as outfile:
+              for txt_file in txt_files:
+                  with open(txt_file, 'r', encoding='utf-8') as infile:
+                      outfile.write(infile.read())
+                      outfile.write("\n\n")  # 每个TXT文件后插入两个空行
+
+          print(f"成功合并 {len(txt_files)} 个TXT文件到：{output_txt_path}")
+          EOF
+
+      - name: Commit results
+        run: |
+          cd private-repo
+          git config user.email "pdf-merger@auto"
+          git config user.name "PDF Merger"
+
+          # 生成版本号
+          timestamp=$(date +%Y%m%d%H%M%S)
+          commit_msg="Auto: 生成优化拼接PDF和汇总TXT（v$timestamp）"
+
+          # 添加更改到暂存区
+          git add "$OUTPUT_DIR"
+
+          # 检查是否有 staged 的更改
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit. Skipping commit and push."
+            exit 0
+          fi
+
+          # 如果有 staged 的更改，则提交并推送
+          git commit -m "$commit_msg"
+          git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
