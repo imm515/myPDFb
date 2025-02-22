@@ -92,12 +92,13 @@ jobs:
           cd private-repo
           python3 <<EOF
           import os
-
+          from pathlib import Path  # 导入 Path 类
+          
           source_dir = os.getenv("SOURCE_DIR")
           output_dir = os.getenv("OUTPUT_DIR")
           search_file = os.getenv("SEARCH_FILE")
           output_txt_path = os.path.join(output_dir, "merged.txt")
-
+          
           # 解析查找单号文件
           search_numbers = []
           with open(search_file, 'r', encoding='utf-8') as f:
@@ -112,38 +113,38 @@ jobs:
                       num = line.split()[0].strip()
                   if num.isdigit():
                       search_numbers.append(f"{int(num):04d}")  # 补零到4位
-
+          
           print(f"查找单号顺序：{search_numbers}")
-
+          
           # 按查找单号顺序获取TXT文件
           txt_files = []
           for num in search_numbers:
-              matched_files = list(Path(source_dir).glob(f"**/{num}_*.txt"))
+              matched_files = list(Path(source_dir).glob(f"**/{num}_*.txt"))  # 使用 Path 类
               if matched_files:
                   txt_files.extend(str(f) for f in matched_files)
               else:
                   print(f"::warning::未找到编号为 {num} 的TXT文件")
-
+          
           # 检查TXT文件是否与PDF文件一一对应
           missing_pdf_files = []
           for txt_file in txt_files:
               pdf_file = txt_file.replace('.txt', '.pdf')
               if not os.path.exists(pdf_file):
                   missing_pdf_files.append(os.path.basename(txt_file))
-
+          
           if missing_pdf_files:
               print("::error::以下TXT文件缺少对应的PDF文件：")
               for file in missing_pdf_files:
                   print(f"- {file}")
               exit(1)
-
+          
           # 合并TXT文件内容
           with open(output_txt_path, 'w', encoding='utf-8') as outfile:
               for txt_file in txt_files:
                   with open(txt_file, 'r', encoding='utf-8') as infile:
                       outfile.write(infile.read())
                       outfile.write("\n\n")  # 每个TXT文件后插入两个空行
-
+          
           print(f"成功合并 {len(txt_files)} 个TXT文件到：{output_txt_path}")
           EOF
 
