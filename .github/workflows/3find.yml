@@ -120,7 +120,7 @@ jobs:
                   rect = page.rect
                   # 设置文本位置（右下角，距离右边 10px，底部 10px）
                   text = str(int(file_num))  # 去掉前导零
-                  text_position = fitz.Point(rect.width - 10 - fitz.get_text_length(text, fontname="helv", fontsize=8), rect.height - 10 - 8)
+                  text_position = fitz.Point(rect.width - 10 - fitz.get_text_length(text, fontname="helv", fontsize=8), rect.height - 10)
                   # 添加文本
                   page.insert_text(text_position, text, fontname="helv", fontsize=8, color=(0.5, 0.5, 0.5))  # 灰色文本
 
