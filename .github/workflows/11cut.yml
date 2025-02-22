@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils python3-pip
-          pip3 install PyMuPDF pillow
+          pip3 install PyMuPDF
 
       - name: Clean 1cut directory
         run: |
@@ -40,7 +40,7 @@ jobs:
           echo "Found PDF files:"
           cat pdf_files.txt
 
-      - name: Extract text and convert PDF to PNG
+      - name: Extract text and split PDF into parts
         run: |
           # 初始化输出目录
           OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
@@ -51,7 +51,6 @@ jobs:
           import fitz  # PyMuPDF
           import os
           import sys
-          from PIL import Image  # 导入 Image 类
 
           pdf_path = sys.argv[1]
           output_dir = sys.argv[2]
@@ -78,22 +77,22 @@ jobs:
                   with open(txt_path, "w", encoding="utf-8") as f:
                       f.write(text)
 
-              # 将页面渲染为图像（PNG）
-              pix = page.get_pixmap(matrix=fitz.Matrix(1.2, 1.2))  # 分辨率放大 1.2 倍
-              img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                  # 创建新的 PDF 页面
+                  new_doc = fitz.open()
+                  new_page = new_doc.new_page(width=w, height=(y1 - y0))
 
-              # 切割图像为上、中、下三部分
-              w, h = img.size
-              for part_num, (part_name, (y0, y1)) in enumerate([
-                  ("1top", (0, h//3)),
-                  ("2mid", (h//3, 2*h//3)),
-                  ("3bot", (2*h//3, h))
-              ], 1):
-                  # 切割图像
-                  crop = img.crop((0, y0, w, y1))
-                  # 保存切割后的图像（PNG 格式）
-                  img_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.png"
-                  crop.save(img_path, "PNG")
+                  # 将当前页面的指定区域复制到新页面
+                  new_page.show_pdf_page(
+                      fitz.Rect(0, 0, w, (y1 - y0)),  # 目标区域
+                      doc,  # 源文档
+                      page_num - 1,  # 源页面索引（从 0 开始）
+                      clip=fitz.Rect(0, y0, w, y1)  # 源页面裁剪区域
+                  )
+
+                  # 保存分割后的 PDF
+                  pdf_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.pdf"
+                  new_doc.save(pdf_path)
+                  new_doc.close()
           EOF
       
           # 读取 PDF 文件路径到数组中
@@ -127,5 +126,5 @@ jobs:
           # 如果有 staged 的更改，则提交并推送
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
-          git commit -m "Auto: Extracted text and converted PDF to PNG"
+          git commit -m "Auto: Extracted text and split PDF into parts"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
