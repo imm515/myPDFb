@@ -40,7 +40,8 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           echo "开始拼接PDF" > merge.log
 
-      - name: Merge and compress PDFs with Ghostscript
+      - name: Extract search numbers
+        id: extract-search-numbers
         run: |
           cd private-repo
 
@@ -63,10 +64,15 @@ jobs:
           done < "$SEARCH_FILE"
 
           echo "查找单号顺序：${search_numbers[*]}"
+          echo "SEARCH_NUMBERS=${search_numbers[*]}" >> $GITHUB_ENV
+
+      - name: Merge and compress PDFs with Ghostscript
+        run: |
+          cd private-repo
 
           # 按查找单号顺序获取PDF文件
           pdf_files=()
-          for num in "${search_numbers[@]}"; do
+          for num in $SEARCH_NUMBERS; do
             matched_file=$(find "$SOURCE_DIR" -type f -name "${num}_*.pdf" | sort -V)
             if [[ -n "$matched_file" ]]; then
               pdf_files+=("$matched_file")
@@ -96,25 +102,8 @@ jobs:
           
           source_dir = os.getenv("SOURCE_DIR")
           output_dir = os.getenv("OUTPUT_DIR")
-          search_file = os.getenv("SEARCH_FILE")
+          search_numbers = os.getenv("SEARCH_NUMBERS").split()
           output_txt_path = os.path.join(output_dir, "merged.txt")
-          
-          # 解析查找单号文件
-          search_numbers = []
-          with open(search_file, 'r', encoding='utf-8') as f:
-              for line in f:
-                  line = line.strip()
-                  if not line or line.startswith('#'):  # 跳过空行和注释
-                      continue
-                  # 提取数字部分（支持两种格式）
-                  if '--' in line:
-                      num = line.split('--')[-1].strip()
-                  else:
-                      num = line.split()[0].strip()
-                  if num.isdigit():
-                      search_numbers.append(f"{int(num):04d}")  # 补零到4位
-          
-          print(f"查找单号顺序：{search_numbers}")
           
           # 按查找单号顺序获取TXT文件
           txt_files = []
