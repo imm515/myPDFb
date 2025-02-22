@@ -89,59 +89,63 @@ jobs:
           cd private-repo
           python3 <<EOF
           import os
-
-          source_dir = os.getenv("SOURCE_DIR")
-          output_dir = os.getenv("OUTPUT_DIR")
-          output_txt_path = os.path.join(output_dir, "merged.txt")
-
-          # 获取所有PDF和TXT文件
+          import fitz  # PyMuPDF
+          from pathlib import Path
+          import re
+          
+          # 配置参数
+          SOURCE_DIR = Path(os.getenv("SOURCE_DIR"))
+          OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR"))
+          OUTPUT_PDF_PATH = OUTPUT_DIR / "merged_optimized.pdf"
+          
+          # 获取排序后的PDF文件列表
+          def natural_sort_key(s):
+              return [int(text) if text.isdigit() else text.lower()
+                      for text in re.split(r'(\d+)', os.path.basename(s))]
+          
           pdf_files = []
-          txt_files = []
-          for root, _, files in os.walk(source_dir):
+          for root, _, files in os.walk(SOURCE_DIR):
               for f in files:
                   if f.lower().endswith('.pdf'):
-                      pdf_files.append(os.path.join(root, f))
-                  elif f.lower().endswith('.txt'):
-                      txt_files.append(os.path.join(root, f))
-
-          # 按文件名排序
-          pdf_files.sort()
-          txt_files.sort()
-
-          # 检查PDF和TXT文件是否一一对应
-          missing_txt_files = []
+                      pdf_files.append(Path(root) / f)
+          pdf_files.sort(key=natural_sort_key)
+          
+          # 创建一个新的PDF文档
+          new_pdf = fitz.open()
+          
+          # 处理每个PDF文件
           for pdf_file in pdf_files:
-              txt_file = os.path.splitext(pdf_file)[0] + '.txt'
-              if not os.path.exists(txt_file):
-                  missing_txt_files.append(os.path.basename(pdf_file))
-
-          if missing_txt_files:
-              print("::error::以下PDF文件缺少对应的TXT文件：")
-              for file in missing_txt_files:
-                  print(f"- {file}")
-              exit(1)
-
-          # 检查TXT文件是否有多余的（没有对应的PDF文件）
-          extra_txt_files = []
-          for txt_file in txt_files:
-              pdf_file = os.path.splitext(txt_file)[0] + '.pdf'
-              if not os.path.exists(pdf_file):
-                  extra_txt_files.append(os.path.basename(txt_file))
-
-          if extra_txt_files:
-              print("::error::以下TXT文件缺少对应的PDF文件：")
-              for file in extra_txt_files:
-                  print(f"- {file}")
-              exit(1)
-
-          # 合并TXT文件内容
-          with open(output_txt_path, 'w', encoding='utf-8') as outfile:
-              for txt_file in txt_files:
-                  with open(txt_file, 'r', encoding='utf-8') as infile:
-                      outfile.write(infile.read())
-                      outfile.write("\n\n")  # 每个TXT文件后插入两个空行
-
-          print(f"成功合并 {len(txt_files)} 个TXT文件到：{output_txt_path}")
+              print(f"处理文件：{pdf_file.name}")
+              pdf_doc = fitz.open(pdf_file)
+              
+              # 遍历每个页面
+              for page in pdf_doc:
+                  # 获取页面中的所有图像
+                  image_list = page.get_images(full=True)
+                  for img in image_list:
+                      xref = img[0]  # 图像的交叉引用编号
+                      pix = fitz.Pixmap(pdf_doc, xref)  # 获取图像像素数据
+                      
+                      # 如果图像不是灰度或 RGB，转换为 RGB
+                      if pix.n > 4:
+                          pix = fitz.Pixmap(fitz.csRGB, pix)
+                      
+                      # 压缩图像（降低 JPEG 质量）
+                      pix.save("temp.jpg", jpg_quality=75)  # 调整质量参数（75 是中等质量）
+                      
+                      # 将压缩后的图像替换回页面
+                      page.replace_image(xref, filename="temp.jpg")
+                  
+                  # 将处理后的页面插入新 PDF
+                  new_pdf.insert_pdf(pdf_doc, from_page=page.number, to_page=page.number)
+              
+              pdf_doc.close()
+          
+          # 保存并优化 PDF
+          new_pdf.save(OUTPUT_PDF_PATH, garbage=4, deflate=True, clean=True, pretty=True)
+          new_pdf.close()
+          
+          print(f"成功生成优化后的PDF：{OUTPUT_PDF_PATH}")
           EOF
 
       - name: Commit results
