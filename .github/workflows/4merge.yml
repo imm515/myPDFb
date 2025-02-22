@@ -40,56 +40,50 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           echo "开始拼接PDF" > merge.log
 
-      - name: Read search numbers from file
-        id: read_search_numbers
+      - name: Parse search numbers
+        id: parse_search_numbers
         run: |
           cd private-repo
+
+          # 解析查找单号文件，获取编号列表
           search_numbers=()
           while IFS= read -r line; do
-            # 跳过注释和空行
-            if [[ ! "$line" =~ ^# && -n "$line" ]]; then
-              # 提取数字部分（支持两种格式）
-              if [[ "$line" == *"--"* ]]; then
-                num=$(echo "$line" | awk -F'--' '{print $NF}' | xargs)
-              else
-                num=$(echo "$line" | awk '{print $1}' | xargs)
-              fi
-              if [[ "$num" =~ ^[0-9]+$ ]]; then
-                search_numbers+=($(printf "%04d" "$num"))
-              else
-                echo "::error::查找单号文件中包含无效数字：$line"
-                exit 1
-              fi
+            line=$(echo "$line" | xargs)  # 去除前后空格
+            if [[ -z "$line" || "$line" == \#* ]]; then  # 跳过空行和注释
+              continue
+            fi
+            # 提取数字部分（支持两种格式）
+            if [[ "$line" == *--* ]]; then
+              num=$(echo "$line" | awk -F'--' '{print $NF}' | xargs)
+            else
+              num=$(echo "$line" | awk '{print $1}' | xargs)
+            fi
+            if [[ "$num" =~ ^[0-9]+$ ]]; then
+              search_numbers+=("$(printf "%04d" "$num")")  # 补零到4位
             fi
           done < "$SEARCH_FILE"
 
-          if [ ${#search_numbers[@]} -eq 0 ]; then
-            echo "::error::查找单号文件中未找到有效编号！"
-            exit 1
-          fi
-
-          echo "需要查找的编号：${search_numbers[@]}"
-          echo "search_numbers=$(IFS=,; echo "${search_numbers[*]}")" >> $GITHUB_ENV
+          # 将编号列表输出为 JSON 格式，供后续步骤使用
+          echo "search_numbers=$(echo "${search_numbers[@]}" | jq -R -s -c 'split(" ")')" >> $GITHUB_OUTPUT
+          echo "解析到的编号列表：${search_numbers[*]}"
 
       - name: Merge and compress PDFs with Ghostscript
         run: |
           cd private-repo
-          # 获取所有PDF文件并按自然顺序排序
+
+          # 从步骤输出中获取编号列表
+          search_numbers=($(echo '${{ steps.parse_search_numbers.outputs.search_numbers }}' | jq -r '.[]'))
+
+          # 按查找单号顺序获取PDF文件
           pdf_files=()
           for num in "${search_numbers[@]}"; do
-            pdf_path=$(find "$SOURCE_DIR" -type f -name "${num}_*.pdf" | sort -V)
-            if [ -n "$pdf_path" ]; then
-              pdf_files+=("$pdf_path")
-              echo "找到匹配的PDF文件：$pdf_path"
+            matched_file=$(find "$SOURCE_DIR" -type f -name "${num}_*.pdf" | sort -V)
+            if [[ -n "$matched_file" ]]; then
+              pdf_files+=("$matched_file")
             else
-              echo "::warning::未找到匹配的PDF文件：${num}_*.pdf"
+              echo "::warning::未找到编号为 $num 的PDF文件"
             fi
           done
-
-          if [ ${#pdf_files[@]} -eq 0 ]; then
-            echo "::error::未找到匹配的PDF文件！"
-            exit 1
-          fi
 
           # 使用Ghostscript合并并压缩PDF
           gs -sDEVICE=pdfwrite \
@@ -106,27 +100,47 @@ jobs:
       - name: Merge TXT files with strict check
         run: |
           cd private-repo
-          output_txt_path="${OUTPUT_DIR}/merged.txt"
-          > "$output_txt_path"  # 清空文件
+          python3 <<EOF
+          import os
+          import json
+          from pathlib import Path
+
+          source_dir = os.getenv("SOURCE_DIR")
+          output_dir = os.getenv("OUTPUT_DIR")
+          search_numbers = json.loads('${{ steps.parse_search_numbers.outputs.search_numbers }}')
+          output_txt_path = os.path.join(output_dir, "merged.txt")
+
+          # 按查找单号顺序获取TXT文件
+          txt_files = []
+          for num in search_numbers:
+              matched_files = list(Path(source_dir).glob(f"**/{num}_*.txt"))
+              if matched_files:
+                  txt_files.extend(str(f) for f in matched_files)
+              else:
+                  print(f"::warning::未找到编号为 {num} 的TXT文件")
+
+          # 检查TXT文件是否与PDF文件一一对应
+          missing_pdf_files = []
+          for txt_file in txt_files:
+              pdf_file = txt_file.replace('.txt', '.pdf')
+              if not os.path.exists(pdf_file):
+                  missing_pdf_files.append(os.path.basename(txt_file))
+
+          if missing_pdf_files:
+              print("::error::以下TXT文件缺少对应的PDF文件：")
+              for file in missing_pdf_files:
+                  print(f"- {file}")
+              exit(1)
 
           # 合并TXT文件内容
-          for num in "${search_numbers[@]}"; do
-            txt_path=$(find "$SOURCE_DIR" -type f -name "${num}_*.txt" | sort -V)
-            if [ -n "$txt_path" ]; then
-              # 检查对应的PDF文件是否存在
-              pdf_path="${txt_path%.txt}.pdf"
-              if [ ! -f "$pdf_path" ]; then
-                echo "::error::TXT文件缺少对应的PDF文件：$txt_path"
-                exit 1
-              fi
-              cat "$txt_path" >> "$output_txt_path"
-              echo -e "\n\n" >> "$output_txt_path"  # 每个TXT文件后插入两个空行
-            else
-              echo "::warning::未找到匹配的TXT文件：${num}_*.txt"
-            fi
-          done
+          with open(output_txt_path, 'w', encoding='utf-8') as outfile:
+              for txt_file in txt_files:
+                  with open(txt_file, 'r', encoding='utf-8') as infile:
+                      outfile.write(infile.read())
+                      outfile.write("\n\n")  # 每个TXT文件后插入两个空行
 
-          echo "成功合并TXT文件到：$output_txt_path"
+          print(f"成功合并 {len(txt_files)} 个TXT文件到：{output_txt_path}")
+          EOF
 
       - name: Commit results
         run: |
