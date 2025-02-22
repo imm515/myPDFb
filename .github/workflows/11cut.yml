@@ -1,4 +1,4 @@
-name: 11cut
+name: 1cut
 
 on:
   workflow_dispatch:
