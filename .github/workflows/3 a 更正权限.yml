@@ -1,4 +1,4 @@
-name: 3 Process PDF and Commit
+name: 3 a Process PDF and Commit
 
 on:
   workflow_dispatch:
