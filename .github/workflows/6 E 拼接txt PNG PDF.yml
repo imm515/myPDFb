@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
   workflow_run:
-    workflows: ["5 E Find and Copy PNG txt"]
+    workflows: ["5 E Find PNG txt 加序号"]
     types:
       - completed
 
