@@ -190,6 +190,15 @@ jobs:
           timestamp=$(date +%Y%m%d%H%M%S)
           commit_msg="Auto: 生成拼接PDF和汇总TXT（v$timestamp）"
 
+          # 添加更改到暂存区
           git add "$OUTPUT_DIR"
+
+          # 检查是否有 staged 的更改
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit. Skipping commit and push."
+            exit 0
+          fi
+
+          # 如果有 staged 的更改，则提交并推送
           git commit -m "$commit_msg"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
