@@ -8,8 +8,18 @@ on:
         required: false
         default: 'true'
 
+  workflow_run:
+    workflows: ["4 E png txt 2name"]
+    types:
+      - completed
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   file-matcher:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/2name
