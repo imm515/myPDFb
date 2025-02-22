@@ -35,7 +35,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pillow
 
-      - name: Install Arial font
+      - name: Install Liberation Mono font
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-liberation
@@ -91,13 +91,12 @@ jobs:
           # 创建目标目录结构
           target_dir.mkdir(parents=True, exist_ok=True)
 
-          # 设置字体为等宽字体
+          # 设置字体
           try:
               font = ImageFont.truetype("LiberationMono-Regular.ttf", 8)  # 使用 Liberation Mono 等宽字体
           except IOError:
               font = ImageFont.load_default()  # 如果 Liberation Mono 未找到，使用默认字体
               print("::warning::Liberation Mono 字体未找到，使用默认字体")
-              
 
           # 匹配文件并复制
           copied_files = []
@@ -117,13 +116,11 @@ jobs:
                       draw = ImageDraw.Draw(img)
                       # 要添加的文本（去掉前导零）
                       text = str(int(file_num))
-                      # 计算文本位置（右下角，留出 10px 边距）
-                      text_bbox = draw.textbbox((0, 0), text, font=font)
-                      text_width = text_bbox[2] - text_bbox[0]
-                      text_height = text_bbox[3] - text_bbox[1]
-                      text_position = (width - text_width - 10, height - text_height - 10)
+                      # 计算文本宽度
+                      text_width = font.getlength(text)
+                      # 计算文本位置（右下角，最后一个字符距离右边 10px，底部 10px）
+                      text_position = (width - text_width - 10, height - 8 - 10)
                       # 添加文本
-                      #draw.text(text_position, text, font=font, fill="black")
                       draw.text(text_position, text, font=font, fill="gray")
                                             
                       # 处理目标文件名
