@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   pdf-merger:
-    #if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/3查找
@@ -32,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libjpeg-dev zlib1g-dev
+          sudo apt-get install -y libjpeg-dev zlib1g-dev ghostscript
           pip install pymupdf
 
       - name: Prepare workspace
@@ -53,7 +52,7 @@ jobs:
           # 配置参数
           SOURCE_DIR = Path(os.getenv("SOURCE_DIR"))
           OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR"))
-          OUTPUT_PDF_PATH = OUTPUT_DIR / "merged_optimized.pdf"
+          OUTPUT_PDF_PATH = OUTPUT_DIR / "merged.pdf"
 
           # 获取排序后的PDF文件列表
           def natural_sort_key(s):
@@ -77,12 +76,25 @@ jobs:
               new_pdf.insert_pdf(pdf_doc)
               pdf_doc.close()
 
-          # 保存并优化PDF
-          new_pdf.save(OUTPUT_PDF_PATH, garbage=4, deflate=True, clean=True)
+          # 保存合并后的PDF
+          new_pdf.save(OUTPUT_PDF_PATH)
           new_pdf.close()
 
-          print(f"成功生成优化后的PDF：{OUTPUT_PDF_PATH}")
+          print(f"成功生成合并后的PDF：{OUTPUT_PDF_PATH}")
           EOF
+
+      - name: Compress PDF with Ghostscript
+        run: |
+          cd private-repo
+          gs -sDEVICE=pdfwrite \
+             -dCompatibilityLevel=1.4 \
+             -dPDFSETTINGS=/printer \
+             -dNOPAUSE \
+             -dQUIET \
+             -dBATCH \
+             -sOutputFile="${OUTPUT_DIR}/merged_compressed.pdf" \
+             "${OUTPUT_DIR}/merged.pdf"
+          echo "成功生成压缩后的PDF：${OUTPUT_DIR}/merged_compressed.pdf"
 
       - name: Merge TXT files with strict check
         run: |
