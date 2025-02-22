@@ -123,8 +123,9 @@ jobs:
                       text_height = text_bbox[3] - text_bbox[1]
                       text_position = (width - text_width - 10, height - text_height - 10)
                       # 添加文本
-                      draw.text(text_position, text, font=font, fill="black")
-                      
+                      #draw.text(text_position, text, font=font, fill="black")
+                      draw.text(text_position, text, font=font, fill="gray")
+                                            
                       # 处理目标文件名
                       target_png_path = target_dir / file_path.name
                       # 处理重名文件
