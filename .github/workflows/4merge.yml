@@ -1,4 +1,3 @@
-
 name: 4merge
 
 on:
@@ -34,7 +33,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libjpeg-dev zlib1g-dev
-          pip install pymupdf Pillow reportlab
+          pip install pymupdf
 
       - name: Prepare workspace
         run: |
@@ -42,7 +41,7 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           echo "开始拼接PDF" > merge.log
 
-      - name: Merge PDFs with resource optimization
+      - name: Merge PDFs with optimization
         run: |
           cd private-repo
           python3 <<EOF
@@ -71,47 +70,15 @@ jobs:
           # 创建一个新的PDF文档
           new_pdf = fitz.open()
 
-          # 用于存储已提取的资源
-          shared_resources = {}
-
           # 处理每个PDF文件
           for pdf_file in pdf_files:
               print(f"处理文件：{pdf_file.name}")
               pdf_doc = fitz.open(pdf_file)
-              
-              # 提取并共享资源
-              for page in pdf_doc:
-                  # 提取图片资源
-                  for img in page.get_images():
-                      xref = img[0]
-                      if xref not in shared_resources:
-                          shared_resources[xref] = pdf_doc.extract_image(xref)["image"]
-                  
-                  # 提取矢量图和字体资源
-                  for xref in page.get_contents():
-                      if xref not in shared_resources:
-                          shared_resources[xref] = pdf_doc.xref_stream(xref)
-
-              # 将页面添加到新PDF
               new_pdf.insert_pdf(pdf_doc)
-
               pdf_doc.close()
 
-          # 优化资源
-          for page in new_pdf:
-              # 替换重复资源
-              for img in page.get_images():
-                  xref = img[0]
-                  if xref in shared_resources:
-                      page.replace_image(xref, pixmap=fitz.Pixmap(shared_resources[xref]))
-              
-              # 替换重复矢量图和字体
-              for xref in page.get_contents():
-                  if xref in shared_resources:
-                      page.set_contents(shared_resources[xref])
-
-          # 保存优化后的PDF
-          new_pdf.save(OUTPUT_PDF_PATH, garbage=4, deflate=True)
+          # 保存并优化PDF
+          new_pdf.save(OUTPUT_PDF_PATH, garbage=4, deflate=True, clean=True)
           new_pdf.close()
 
           print(f"成功生成优化后的PDF：{OUTPUT_PDF_PATH}")
