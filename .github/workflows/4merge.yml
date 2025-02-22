@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   pdf-merger:
-    #if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/3查找
@@ -41,47 +40,40 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           echo "开始拼接PDF" > merge.log
 
-      - name: Merge PDFs with optimization
+      - name: Merge PDFs with shared resources
         run: |
           cd private-repo
           python3 <<EOF
           import os
           import fitz  # PyMuPDF
           from pathlib import Path
-          import re
 
-          # 配置参数
+          # 配置路径
           SOURCE_DIR = Path(os.getenv("SOURCE_DIR"))
           OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR"))
-          OUTPUT_PDF_PATH = OUTPUT_DIR / "merged_optimized.pdf"
+          OUTPUT_PDF_PATH = OUTPUT_DIR / "merged_shared_resources.pdf"
 
-          # 获取排序后的PDF文件列表
-          def natural_sort_key(s):
-              return [int(text) if text.isdigit() else text.lower()
-                      for text in re.split(r'(\d+)', os.path.basename(s))]
+          # 获取目录下所有 PDF 文件
+          pdf_files = list(SOURCE_DIR.glob("*.pdf"))
+          if not pdf_files:
+              print(f"在目录 {SOURCE_DIR} 中未找到 PDF 文件。")
+              exit(1)
 
-          pdf_files = []
-          for root, _, files in os.walk(SOURCE_DIR):
-              for f in files:
-                  if f.lower().endswith('.pdf'):
-                      pdf_files.append(Path(root) / f)
-          pdf_files.sort(key=natural_sort_key)
-
-          # 创建一个新的PDF文档
+          # 创建一个新的 PDF 文档
           new_pdf = fitz.open()
 
-          # 处理每个PDF文件
+          # 合并 PDF 文件并启用资源共享
           for pdf_file in pdf_files:
-              print(f"处理文件：{pdf_file.name}")
+              print(f"正在处理文件：{pdf_file.name}")
               pdf_doc = fitz.open(pdf_file)
-              new_pdf.insert_pdf(pdf_doc)
+              new_pdf.insert_pdf(pdf_doc, reuse_xref=True)  # 启用资源共享
               pdf_doc.close()
 
-          # 保存并优化PDF
+          # 保存合并后的 PDF 文件，并进一步优化
           new_pdf.save(OUTPUT_PDF_PATH, garbage=4, deflate=True, clean=True)
           new_pdf.close()
 
-          print(f"成功生成优化后的PDF：{OUTPUT_PDF_PATH}")
+          print(f"成功生成合并后的 PDF 文件：{OUTPUT_PDF_PATH}")
           EOF
 
       - name: Merge TXT files with strict check
