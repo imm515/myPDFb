@@ -40,6 +40,16 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pymupdf
+
+      - name: Install Open Sans font
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-open-sans
+
       - name: Initialize directories
         run: |
           cd private-repo
@@ -64,6 +74,7 @@ jobs:
           import re
           import shutil
           from pathlib import Path
+          import fitz  # PyMuPDF
 
           source_dir = Path(os.getenv("SOURCE_DIR"))
           target_dir = Path(os.getenv("TARGET_DIR"))
@@ -92,7 +103,7 @@ jobs:
 
           # 匹配文件并复制
           copied_files = []
-          for file_path in source_dir.glob('**/*.pdf'):  # 修改为查找 .pdf 文件
+          for file_path in source_dir.glob('**/*.pdf'):  # 查找 .pdf 文件
               # 匹配四位数开头的文件名
               match = re.match(r'^(\d{4})_', file_path.name)
               if not match:
@@ -100,9 +111,21 @@ jobs:
               
               file_num = match.group(1)
               if file_num in search_numbers:
-                  # 复制 .pdf 文件
-                  target_pdf_path = target_dir / file_path.name
+                  # 打开 PDF 文件
+                  pdf_document = fitz.open(file_path)
                   
+                  # 仅处理第一页（假设 PDF 是单页的）
+                  page = pdf_document.load_page(0)
+                  # 获取页面尺寸
+                  rect = page.rect
+                  # 设置文本位置（右下角，距离右边 10px，底部 10px）
+                  text = str(int(file_num))  # 去掉前导零
+                  text_position = fitz.Point(rect.width - 10 - fitz.get_text_length(text, fontname="helv", fontsize=8), rect.height - 10 - 8)
+                  # 添加文本
+                  page.insert_text(text_position, text, fontname="helv", fontsize=8, color=(0.5, 0.5, 0.5))  # 灰色文本
+
+                  # 处理目标文件名
+                  target_pdf_path = target_dir / file_path.name
                   # 处理重名文件
                   counter = 1
                   while target_pdf_path.exists():
@@ -110,7 +133,9 @@ jobs:
                       target_pdf_path = target_dir / new_name
                       counter += 1
                   
-                  shutil.copy2(file_path, target_pdf_path)
+                  # 保存修改后的 PDF
+                  pdf_document.save(target_pdf_path)
+                  pdf_document.close()
                   copied_files.append(target_pdf_path.name)
 
                   # 复制对应的 .txt 文件
