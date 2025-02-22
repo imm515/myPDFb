@@ -7,9 +7,18 @@ on:
         description: '是否清空旧2name目录？'
         required: false
         default: 'true'
+  workflow_run:
+    workflows: ["3 E 提取本文，png"]
+    types:
+      - completed
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   process-naming:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/1cut
