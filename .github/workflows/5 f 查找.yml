@@ -1,4 +1,4 @@
-name: 5 f Find and Copy Numbered Files
+name: 5 f Find and Copy JPG txt Files
 
 on:
   workflow_dispatch:
