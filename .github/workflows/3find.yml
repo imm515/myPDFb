@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   file-matcher:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    #if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/2name
