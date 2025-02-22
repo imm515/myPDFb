@@ -18,6 +18,7 @@ jobs:
     env:
       SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/3查找
       OUTPUT_DIR: ${{ secrets.PRIVATE_DIR }}/4拼接PDF
+      SEARCH_FILE: ${{ secrets.PRIVATE_DIR }}/#查找单号
 
     steps:
       - name: Checkout private repo
@@ -39,12 +40,50 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           echo "开始拼接PDF" > merge.log
 
+      - name: Parse search numbers
+        id: parse_search_numbers
+        run: |
+          cd private-repo
+
+          # 解析查找单号文件，获取编号列表
+          search_numbers=()
+          while IFS= read -r line; do
+            line=$(echo "$line" | xargs)  # 去除前后空格
+            if [[ -z "$line" || "$line" == \#* ]]; then  # 跳过空行和注释
+              continue
+            fi
+            # 提取数字部分（支持两种格式）
+            if [[ "$line" == *--* ]]; then
+              num=$(echo "$line" | awk -F'--' '{print $NF}' | xargs)
+            else
+              num=$(echo "$line" | awk '{print $1}' | xargs)
+            fi
+            if [[ "$num" =~ ^[0-9]+$ ]]; then
+              search_numbers+=("$(printf "%04d" "$num")")  # 补零到4位
+            fi
+          done < "$SEARCH_FILE"
+
+          # 将编号列表输出为 JSON 格式，供后续步骤使用
+          echo "search_numbers=$(echo "${search_numbers[@]}" | jq -R -s -c 'split(" ")')" >> $GITHUB_OUTPUT
+          echo "解析到的编号列表：${search_numbers[*]}"
+
       - name: Merge and compress PDFs with Ghostscript
         run: |
           cd private-repo
 
-          # 获取所有PDF文件并按自然顺序排序
-          pdf_files=($(find "$SOURCE_DIR" -type f -name "*.pdf" | sort -V))
+          # 从步骤输出中获取编号列表
+          search_numbers=($(echo '${{ steps.parse_search_numbers.outputs.search_numbers }}' | jq -r '.[]'))
+
+          # 按查找单号顺序获取PDF文件
+          pdf_files=()
+          for num in "${search_numbers[@]}"; do
+            matched_file=$(find "$SOURCE_DIR" -type f -name "${num}_*.pdf" | sort -V)
+            if [[ -n "$matched_file" ]]; then
+              pdf_files+=("$matched_file")
+            else
+              echo "::warning::未找到编号为 $num 的PDF文件"
+            fi
+          done
 
           # 使用Ghostscript合并并压缩PDF
           gs -sDEVICE=pdfwrite \
@@ -63,48 +102,33 @@ jobs:
           cd private-repo
           python3 <<EOF
           import os
+          import json
+          from pathlib import Path
 
           source_dir = os.getenv("SOURCE_DIR")
           output_dir = os.getenv("OUTPUT_DIR")
+          search_numbers = json.loads('${{ steps.parse_search_numbers.outputs.search_numbers }}')
           output_txt_path = os.path.join(output_dir, "merged.txt")
 
-          # 获取所有PDF和TXT文件
-          pdf_files = []
+          # 按查找单号顺序获取TXT文件
           txt_files = []
-          for root, _, files in os.walk(source_dir):
-              for f in files:
-                  if f.lower().endswith('.pdf'):
-                      pdf_files.append(os.path.join(root, f))
-                  elif f.lower().endswith('.txt'):
-                      txt_files.append(os.path.join(root, f))
+          for num in search_numbers:
+              matched_files = list(Path(source_dir).glob(f"**/{num}_*.txt"))
+              if matched_files:
+                  txt_files.extend(str(f) for f in matched_files)
+              else:
+                  print(f"::warning::未找到编号为 {num} 的TXT文件")
 
-          # 按文件名排序
-          pdf_files.sort()
-          txt_files.sort()
-
-          # 检查PDF和TXT文件是否一一对应
-          missing_txt_files = []
-          for pdf_file in pdf_files:
-              txt_file = os.path.splitext(pdf_file)[0] + '.txt'
-              if not os.path.exists(txt_file):
-                  missing_txt_files.append(os.path.basename(pdf_file))
-
-          if missing_txt_files:
-              print("::error::以下PDF文件缺少对应的TXT文件：")
-              for file in missing_txt_files:
-                  print(f"- {file}")
-              exit(1)
-
-          # 检查TXT文件是否有多余的（没有对应的PDF文件）
-          extra_txt_files = []
+          # 检查TXT文件是否与PDF文件一一对应
+          missing_pdf_files = []
           for txt_file in txt_files:
-              pdf_file = os.path.splitext(txt_file)[0] + '.pdf'
+              pdf_file = txt_file.replace('.txt', '.pdf')
               if not os.path.exists(pdf_file):
-                  extra_txt_files.append(os.path.basename(txt_file))
+                  missing_pdf_files.append(os.path.basename(txt_file))
 
-          if extra_txt_files:
+          if missing_pdf_files:
               print("::error::以下TXT文件缺少对应的PDF文件：")
-              for file in extra_txt_files:
+              for file in missing_pdf_files:
                   print(f"- {file}")
               exit(1)
 
