@@ -28,11 +28,10 @@ jobs:
           path: private-repo
           ref: main
 
-      - name: Install dependencies
+      - name: Install Ghostscript
         run: |
           sudo apt-get update
-          sudo apt-get install -y libjpeg-dev zlib1g-dev ghostscript
-          pip install pymupdf
+          sudo apt-get install -y ghostscript
 
       - name: Prepare workspace
         run: |
@@ -40,52 +39,14 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           echo "开始拼接PDF" > merge.log
 
-      - name: Merge PDFs with optimization
+      - name: Merge and compress PDFs with Ghostscript
         run: |
           cd private-repo
-          python3 <<EOF
-          import os
-          import fitz  # PyMuPDF
-          from pathlib import Path
-          import re
 
-          # 配置参数
-          SOURCE_DIR = Path(os.getenv("SOURCE_DIR"))
-          OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR"))
-          OUTPUT_PDF_PATH = OUTPUT_DIR / "merged.pdf"
+          # 获取所有PDF文件并按自然顺序排序
+          pdf_files=($(find "$SOURCE_DIR" -type f -name "*.pdf" | sort -V))
 
-          # 获取排序后的PDF文件列表
-          def natural_sort_key(s):
-              return [int(text) if text.isdigit() else text.lower()
-                      for text in re.split(r'(\d+)', os.path.basename(s))]
-
-          pdf_files = []
-          for root, _, files in os.walk(SOURCE_DIR):
-              for f in files:
-                  if f.lower().endswith('.pdf'):
-                      pdf_files.append(Path(root) / f)
-          pdf_files.sort(key=natural_sort_key)
-
-          # 创建一个新的PDF文档
-          new_pdf = fitz.open()
-
-          # 处理每个PDF文件
-          for pdf_file in pdf_files:
-              print(f"处理文件：{pdf_file.name}")
-              pdf_doc = fitz.open(pdf_file)
-              new_pdf.insert_pdf(pdf_doc)
-              pdf_doc.close()
-
-          # 保存合并后的PDF
-          new_pdf.save(OUTPUT_PDF_PATH)
-          new_pdf.close()
-
-          print(f"成功生成合并后的PDF：{OUTPUT_PDF_PATH}")
-          EOF
-
-      - name: Compress PDF with Ghostscript
-        run: |
-          cd private-repo
+          # 使用Ghostscript合并并压缩PDF
           gs -sDEVICE=pdfwrite \
              -dCompatibilityLevel=1.4 \
              -dPDFSETTINGS=/printer \
@@ -93,8 +54,9 @@ jobs:
              -dQUIET \
              -dBATCH \
              -sOutputFile="${OUTPUT_DIR}/merged_compressed.pdf" \
-             "${OUTPUT_DIR}/merged.pdf"
-          echo "成功生成压缩后的PDF：${OUTPUT_DIR}/merged_compressed.pdf"
+             "${pdf_files[@]}"
+
+          echo "成功生成合并并压缩后的PDF：${OUTPUT_DIR}/merged_compressed.pdf"
 
       - name: Merge TXT files with strict check
         run: |
