@@ -127,8 +127,8 @@ jobs:
                       pix = fitz.Pixmap(pdf_doc, xref)  # 获取图像像素数据
                       
                       # 如果图像不是灰度或 RGB，转换为 RGB
-                      if pix.n > 4:
-                          pix = fitz.Pixmap(fitz.csRGB, pix)
+                      #if pix.n > 4:
+                          #pix = fitz.Pixmap(fitz.csRGB, pix)
                       
                       # 压缩图像（降低 JPEG 质量）
                       pix.save("temp.jpg", jpg_quality=75)  # 调整质量参数（75 是中等质量）
