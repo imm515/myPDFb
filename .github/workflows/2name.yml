@@ -1,14 +1,9 @@
 name: 2name
 
 on:
-  workflow_dispatch:
-    inputs:
-      clean_run:
-        description: '是否清空旧2name目录？'
-        required: false
-        default: 'true'
+  workflow_dispatch:  # 手动触发
   workflow_run:
-    workflows: ["1cut"]  # 修改为材料1的workflow名称
+    workflows: ["1cut"]  # 依赖于 1cut 工作流
     types:
       - completed
 
@@ -18,11 +13,11 @@ concurrency:
 
 jobs:
   process-naming:
-    #if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
-      SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/1cut
-      DEST_DIR: ${{ secrets.PRIVATE_DIR }}/2name
+      WORK_DIR: "${{ secrets.PRIVATE_DIR }}/cb202501"  # 工作目录
+      SOURCE_DIR: "$WORK_DIR/1cut"  # 源目录
+      DEST_DIR: "$WORK_DIR/2name"   # 目标目录
 
     steps:
       - name: Checkout private repo
@@ -36,11 +31,10 @@ jobs:
       - name: Initialize workspace
         run: |
           cd private-repo
-          # 根据参数决定是否清空旧目录
-          if [ "${{ github.event.inputs.clean_run }}" = "true" ]; then
-            rm -rf "$DEST_DIR"
-            echo "♻️ 已清空旧2name目录"
-          fi
+          # 清空旧目录
+          rm -rf "$DEST_DIR"
+          echo "♻️ 已清空旧2name目录"
+          # 创建目标目录
           mkdir -p "$DEST_DIR"
 
       - name: Process files based on TXT content
