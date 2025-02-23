@@ -55,7 +55,7 @@ jobs:
         run: |
           find private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
           echo "Found PDF files:"
-          cat pdf_files.txt
+          #cat pdf_files.txt
 
       - name: Extract text and split PDF into parts
         run: |
