@@ -2,7 +2,6 @@ name: 4merge
 
 on:
   workflow_dispatch:
-
   workflow_run:
     workflows: ["3find"]
     types:
@@ -15,11 +14,9 @@ concurrency:
 jobs:
   pdf-merger:
     runs-on: ubuntu-latest
-    env:
-      SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/3查找
-      OUTPUT_DIR: ${{ secrets.PRIVATE_DIR }}/4拼接PDF
-      SEARCH_FILE: ${{ secrets.PRIVATE_DIR }}/#查找单号  # 新增：引入查找单号文件路径
-
+    defaults:
+      run:
+        working-directory: ${{ secrets.PRIVATE_DIR }}/cb202501
     steps:
       - name: Checkout private repo
         uses: actions/checkout@v4
@@ -36,30 +33,25 @@ jobs:
 
       - name: Prepare workspace
         run: |
-          cd private-repo
           mkdir -p "$OUTPUT_DIR"
           echo "开始拼接PDF" > merge.log
 
       - name: Extract search numbers
         id: extract-search-numbers
         run: |
-          cd private-repo
-
-          # 解析查找单号文件，获取排序依据
           search_numbers=()
           while IFS= read -r line; do
-            line=$(echo "$line" | xargs)  # 去除前后空格
-            if [[ -z "$line" || "$line" == \#* ]]; then  # 跳过空行和注释
+            line=$(echo "$line" | xargs)
+            if [[ -z "$line" || "$line" == \#* ]]; then
               continue
             fi
-            # 提取数字部分（支持两种格式）
             if [[ "$line" == *--* ]]; then
               num=$(echo "$line" | awk -F'--' '{print $NF}' | xargs)
             else
               num=$(echo "$line" | awk '{print $1}' | xargs)
             fi
             if [[ "$num" =~ ^[0-9]+$ ]]; then
-              search_numbers+=("$(printf "%04d" "$num")")  # 补零到4位
+              search_numbers+=("$(printf "%04d" "$num")")
             fi
           done < "$SEARCH_FILE"
 
@@ -68,9 +60,6 @@ jobs:
 
       - name: Merge and compress PDFs with Ghostscript
         run: |
-          cd private-repo
-
-          # 按查找单号顺序获取PDF文件
           pdf_files=()
           for num in $SEARCH_NUMBERS; do
             matched_file=$(find "$SOURCE_DIR" -type f -name "${num}_*.pdf" | sort -V)
@@ -81,7 +70,6 @@ jobs:
             fi
           done
 
-          # 使用Ghostscript合并并压缩PDF
           gs -sDEVICE=pdfwrite \
              -dCompatibilityLevel=1.4 \
              -dPDFSETTINGS=/printer \
@@ -95,67 +83,50 @@ jobs:
 
       - name: Merge TXT files with strict check
         run: |
-          cd private-repo
-          python3 <<EOF
-          import os
-          from pathlib import Path  # 导入 Path 类
-          
-          source_dir = os.getenv("SOURCE_DIR")
-          output_dir = os.getenv("OUTPUT_DIR")
-          search_numbers = os.getenv("SEARCH_NUMBERS").split()
-          output_txt_path = os.path.join(output_dir, "merged.txt")
-          
-          # 按查找单号顺序获取TXT文件
-          txt_files = []
-          for num in search_numbers:
-              matched_files = list(Path(source_dir).glob(f"**/{num}_*.txt"))  # 使用 Path 类
-              if matched_files:
-                  txt_files.extend(str(f) for f in matched_files)
-              else:
-                  print(f"::warning::未找到编号为 {num} 的TXT文件")
-          
-          # 检查TXT文件是否与PDF文件一一对应
-          missing_pdf_files = []
-          for txt_file in txt_files:
-              pdf_file = txt_file.replace('.txt', '.pdf')
-              if not os.path.exists(pdf_file):
-                  missing_pdf_files.append(os.path.basename(txt_file))
-          
-          if missing_pdf_files:
-              print("::error::以下TXT文件缺少对应的PDF文件：")
-              for file in missing_pdf_files:
-                  print(f"- {file}")
-              exit(1)
-          
-          # 合并TXT文件内容
-          with open(output_txt_path, 'w', encoding='utf-8') as outfile:
-              for txt_file in txt_files:
-                  with open(txt_file, 'r', encoding='utf-8') as infile:
-                      outfile.write(infile.read())
-                      outfile.write("\n\n")  # 每个TXT文件后插入两个空行
-          
-          print(f"成功合并 {len(txt_files)} 个TXT文件到：{output_txt_path}")
-          EOF
+          output_txt_path="${OUTPUT_DIR}/merged.txt"
+          txt_files=()
+          for num in $SEARCH_NUMBERS; do
+              matched_files=$(find "$SOURCE_DIR" -type f -name "${num}_*.txt" | sort -V)
+              if [[ -n "$matched_files" ]]; then
+                  txt_files+=("$matched_files")
+              else
+                  echo "::warning::未找到编号为 $num 的TXT文件"
+              fi
+          done
+
+          missing_pdf_files=()
+          for txt_file in "${txt_files[@]}"; do
+              pdf_file="${txt_file%.txt}.pdf"
+              if [[ ! -f "$pdf_file" ]]; then
+                  missing_pdf_files+=("$(basename "$txt_file")")
+              fi
+          done
+
+          if [[ ${#missing_pdf_files[@]} -gt 0 ]]; then
+              echo "::error::以下TXT文件缺少对应的PDF文件："
+              for file in "${missing_pdf_files[@]}"; do
+                  echo "- $file"
+              done
+              exit 1
+          fi
+
+          cat "${txt_files[@]}" > "$output_txt_path"
+          echo "成功合并 ${#txt_files[@]} 个TXT文件到：$output_txt_path"
 
       - name: Commit results
         run: |
-          cd private-repo
           git config user.email "pdf-merger@auto"
           git config user.name "PDF Merger"
 
-          # 生成版本号
           timestamp=$(date +%Y%m%d%H%M%S)
           commit_msg="Auto: 生成优化拼接PDF和汇总TXT（v$timestamp）"
 
-          # 添加更改到暂存区
           git add "$OUTPUT_DIR"
 
-          # 检查是否有 staged 的更改
           if git diff --cached --quiet; then
             echo "No staged changes to commit. Skipping commit and push."
             exit 0
           fi
 
-          # 如果有 staged 的更改，则提交并推送
           git commit -m "$commit_msg"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
