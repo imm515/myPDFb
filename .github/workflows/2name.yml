@@ -48,7 +48,8 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          pip install pymupdf numpy Pillow --quiet
+          pip install numpy Pillow --quiet
+          sudo apt-get install ghostscript -y  # 安装Ghostscript
           
       - name: Process files based on PDF content
         run: |
@@ -56,10 +57,9 @@ jobs:
           cat << 'EOF' > process_files.py
           import os
           import re
-          import fitz  # PyMuPDF
-          import numpy as np
+          import subprocess
           from PIL import Image
-          import io
+          import numpy as np
 
           SOURCE = os.getenv("SOURCE_DIR")
           DEST = os.getenv("DEST_DIR")
@@ -80,27 +80,25 @@ jobs:
           all_files.sort(key=natural_sort_key)
 
           def is_pdf_empty(pdf_path):
-              # 打开PDF文件
-              doc = fitz.open(pdf_path)
-              
-              text = ""
-              for page in doc:
-                  text += page.get_text("text")  # 提取文本
-              
-              if text.strip():  # 如果有提取到文本，返回False
-                  return False
-              
-              # 如果没有提取到文本，检查图像内容
-              for page in doc:
-                  # 获取页面的图像
-                  pix = page.get_pixmap()  # 获取该页面的图片内容
-                  img_data = pix.tobytes("png")  # 转为PNG字节流
-                  
-                  # 使用PIL加载图像并转为灰度图像
-                  img = Image.open(io.BytesIO(img_data)).convert('L')  # 转为灰度图
+              # 使用Ghostscript将PDF转换为图片
+              output_image = "/tmp/temp_image.png"
+              gs_command = [
+                  "gs", 
+                  "-dNOPAUSE", "-dBATCH", 
+                  "-sDEVICE=pngalpha", 
+                  "-sOutputFile=" + output_image, 
+                  "-r144",  # 设置分辨率
+                  pdf_path
+              ]
+
+              try:
+                  subprocess.run(gs_command, check=True)
+
+                  # 使用PIL加载图片
+                  img = Image.open(output_image).convert('L')  # 转为灰度图像
                   img_array = np.array(img)  # 转为NumPy数组
 
-                  # 计算图像的非白色像素占比
+                  # 计算非白色像素占比
                   threshold = 240  # 以255（纯白）为基准的阈值
                   non_white_pixels = np.sum(img_array < threshold)
                   total_pixels = img_array.size
@@ -108,11 +106,13 @@ jobs:
                   non_white_percentage = non_white_pixels / total_pixels * 100
 
                   # 判断是否存在足够的非白色像素
-                  # 如果非白色像素占比低于某个阈值（例如1%），则认为是空白的
                   if non_white_percentage < 1:
-                      return True
+                      return True  # PDF认为是空白的
+                  return False  # PDF不为空白
 
-              return False
+              except subprocess.CalledProcessError as e:
+                  print(f"Error processing PDF with Ghostscript: {e}")
+                  return True  # 如果转换出错，可以认为PDF为空白
 
           for filepath in all_files:
               filename = os.path.basename(filepath)
