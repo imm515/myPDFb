@@ -127,7 +127,12 @@ jobs:
 
           # 循环处理每个 PDF 文件
           for pdf_path in "${pdf_files[@]}"; do
-            echo "Processing: $pdf_path"
+            #echo "Processing: $pdf_path"
+
+            # 模糊化路径显示
+            masked_path="${pdf_path:0:3}***${pdf_path: -5}"
+            echo "Processing: $masked_path"
+            
             python3 process_pdf.py "$pdf_path" "$OUTPUT_PATH"
           done
 
