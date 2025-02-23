@@ -51,102 +51,68 @@ jobs:
           pip install numpy Pillow --quiet
           sudo apt-get install ghostscript -y  # 安装Ghostscript
           
-      - name: Process files based on PDF content
+      - name: Process files based on PDF content size
         run: |
           cd private-repo
           cat << 'EOF' > process_files.py
-          import os
-          import re
-          import subprocess
-          from PIL import Image
-          import numpy as np
+import os
+import subprocess
 
-          SOURCE = os.getenv("SOURCE_DIR")
-          DEST = os.getenv("DEST_DIR")
+def is_pdf_empty(pdf_path, min_size_kb=50):
+    """
+    判断PDF是否为空白，通过Ghostscript转换后文件的大小来判断。
+    如果生成的图像文件非常小（小于指定的阈值），则认为该PDF为空白。
+    """
+    # 使用Ghostscript将PDF转换为PNG图像
+    output_image = "/tmp/temp_image.png"
+    gs_command = [
+        "gs", 
+        "-dNOPAUSE", "-dBATCH", 
+        "-sDEVICE=pngalpha", 
+        "-sOutputFile=" + output_image, 
+        "-r144",  # 设置分辨率
+        pdf_path
+    ]
+    
+    try:
+        subprocess.run(gs_command, check=True)
 
-          existing_files = [f for f in os.listdir(DEST) if f.endswith('.pdf')]
-          counter = max([int(f.split('_')[0]) for f in existing_files]) if existing_files else 0
+        # 获取转换后的图像文件大小（单位：KB）
+        file_size_kb = os.path.getsize(output_image) / 1024  # 转换为KB
 
-          all_files = []
-          for root, _, files in os.walk(SOURCE):
-              for f in files:
-                  if f.endswith('.pdf') and any(part in f for part in ['1top', '2mid', '3bot']):
-                      all_files.append(os.path.join(root, f))
+        print(f"Generated image size: {file_size_kb:.2f} KB")
 
-          def natural_sort_key(s):
-              return [int(text) if text.isdigit() else text.lower()
-                      for text in re.split(r'(\d+)', s)]
+        # 如果文件大小小于指定的最小值，则认为该PDF为空白
+        if file_size_kb < min_size_kb:
+            print(f"{pdf_path} is considered empty (file size: {file_size_kb:.2f} KB).")
+            return True
+        else:
+            print(f"{pdf_path} is not empty (file size: {file_size_kb:.2f} KB).")
+            return False
+    
+    except subprocess.CalledProcessError as e:
+        print(f"Error processing PDF with Ghostscript: {e}")
+        return True  # 如果转换出错，可以认为PDF为空白
 
-          all_files.sort(key=natural_sort_key)
+SOURCE = os.getenv("SOURCE_DIR")
+DEST = os.getenv("DEST_DIR")
 
-          def is_pdf_empty(pdf_path):
-              # 使用Ghostscript将PDF转换为图片
-              output_image = "/tmp/temp_image.png"
-              gs_command = [
-                  "gs", 
-                  "-dNOPAUSE", "-dBATCH", 
-                  "-sDEVICE=pngalpha", 
-                  "-sOutputFile=" + output_image, 
-                  "-r144",  # 设置分辨率
-                  pdf_path
-              ]
+all_files = []
+for root, _, files in os.walk(SOURCE):
+    for f in files:
+        if f.endswith('.pdf') and any(part in f for part in ['1top', '2mid', '3bot']):
+            all_files.append(os.path.join(root, f))
 
-              try:
-                  subprocess.run(gs_command, check=True)
-
-                  # 使用PIL加载图片
-                  img = Image.open(output_image).convert('L')  # 转为灰度图像
-                  img_array = np.array(img)  # 转为NumPy数组
-
-                  # 计算非白色像素占比
-                  threshold = 240  # 以255（纯白）为基准的阈值
-                  non_white_pixels = np.sum(img_array < threshold)
-                  total_pixels = img_array.size
-
-                  non_white_percentage = non_white_pixels / total_pixels * 100
-
-                  # 判断是否存在足够的非白色像素
-                  if non_white_percentage < 1:
-                      return True  # PDF认为是空白的
-                  return False  # PDF不为空白
-
-              except subprocess.CalledProcessError as e:
-                  print(f"Error processing PDF with Ghostscript: {e}")
-                  return True  # 如果转换出错，可以认为PDF为空白
-
-          for filepath in all_files:
-              filename = os.path.basename(filepath)
-              match = re.search(r'p(\d+)_(1top|2mid|3bot)', filename)
-              if not match:
-                  continue
-
-              page_num = match.group(1)
-              part_type = match.group(2)
-              txt_path = filepath.replace('.pdf', '.txt')
-
-              if os.path.exists(txt_path):
-                  with open(txt_path, 'r', encoding='utf-8') as f:
-                      content = f.read().strip()
-
-                  if content:
-                      counter += 1
-                      new_name = f"{counter:04d}_{page_num}{part_type}"
-                      os.system(f"cp '{filepath}' '{os.path.join(DEST, new_name)}.pdf'")
-                      os.system(f"cp '{txt_path}' '{os.path.join(DEST, new_name)}.txt'")
-                      print(f"Processed: {filename} → {new_name}.pdf & .txt")
-                  else:
-                      os.remove(filepath)
-                      os.remove(txt_path)
-                      print(f"Deleted empty: {filename} and {os.path.basename(txt_path)}")
-              else:
-                  if is_pdf_empty(filepath):
-                      print(f"Warning: {filename} appears to be a scanned document or empty PDF.")
-                      # Optionally delete or handle scanned PDFs differently
-                      os.remove(filepath)
-                      print(f"Deleted scanned/empty: {filename}")
-                  else:
-                      print(f"TXT file not found for: {filename}")
-          EOF
+for filepath in all_files:
+    if is_pdf_empty(filepath):
+        print(f"Deleted empty PDF: {filepath}")
+        os.remove(filepath)
+    else:
+        filename = os.path.basename(filepath)
+        new_name = f"processed_{filename}"
+        os.system(f"cp '{filepath}' '{os.path.join(DEST, new_name)}.pdf'")
+        print(f"Processed: {filename} → {new_name}.pdf")
+EOF
           python3 process_files.py
 
       - name: Commit and push results
@@ -156,7 +122,7 @@ jobs:
           git config user.name "Document Processor"
 
           file_count=$(find "${{ env.DEST_DIR }}" -type f -name "*.pdf" | wc -l)
-          commit_msg="Auto: Generated $file_count named slices and paired TXT files"
+          commit_msg="Auto: Generated $file_count named slices and removed empty PDFs"
 
           git add "${{ env.DEST_DIR }}"
           if git diff --cached --quiet; then
