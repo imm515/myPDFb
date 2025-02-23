@@ -59,8 +59,9 @@ jobs:
 
           # 输出模糊化后的内容
           echo "Found PDF files (masked):"
-          cat pdf_files.txt | awk '{print substr($0, 1, 3) "***" substr($0, length($0)-4)}'
-
+          #cat pdf_files.txt | awk '{print substr($0, 1, 3) "***" substr($0, length($0)-4)}'
+          cat pdf_files.txt | awk '{print substr($0, 1, 10) "***" substr($0, length($0)-7)}'
+          
       - name: Extract text and split PDF into parts
         run: |
           # 初始化输出目录
