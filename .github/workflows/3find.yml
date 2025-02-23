@@ -21,7 +21,6 @@ jobs:
       - name: 使用工作目录
         run: |
           echo "工作目录是：$WORK_DIR"
-          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/cb202501" >> $GITHUB_ENV
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
