@@ -1,15 +1,9 @@
 name: 3find
 
 on:
-  workflow_dispatch:
-    inputs:
-      clean_target:
-        description: '是否清空旧3查找目录？'
-        required: false
-        default: 'true'
-
+  workflow_dispatch:  # 手动触发
   workflow_run:
-    workflows: ["2name"]
+    workflows: ["2name"]  # 依赖于 2name 工作流
     types:
       - completed
 
@@ -19,12 +13,12 @@ concurrency:
 
 jobs:
   file-matcher:
-    #if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
-      SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/2name
-      TARGET_DIR: ${{ secrets.PRIVATE_DIR }}/3查找
-      SEARCH_FILE: ${{ secrets.PRIVATE_DIR }}/#查找单号
+      WORK_DIR: "${{ secrets.PRIVATE_DIR }}/cb202501"  # 工作目录
+      SOURCE_DIR: "$WORK_DIR/2name"  # 源目录
+      TARGET_DIR: "$WORK_DIR/3查找"   # 目标目录
+      SEARCH_FILE: "$WORK_DIR/#查找单号"  # 查找单号文件路径
 
     steps:
       - name: Checkout private repo
@@ -51,11 +45,10 @@ jobs:
       - name: Initialize directories
         run: |
           cd private-repo
-          # 处理目标目录
-          if [ "${{ github.event.inputs.clean_target }}" = "true" ]; then
-            rm -rf "$TARGET_DIR"
-            echo "♻️ 已清空旧3查找目录"
-          fi
+          # 清空旧目录
+          rm -rf "$TARGET_DIR"
+          echo "♻️ 已清空旧3查找目录"
+          # 创建目标目录
           mkdir -p "$TARGET_DIR"
           
           # 检查查找单号文件是否存在
