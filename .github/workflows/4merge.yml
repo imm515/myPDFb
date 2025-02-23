@@ -113,7 +113,7 @@ jobs:
              -sOutputFile="${OUTPUT_DIR}/merged_compressed.pdf" \
              "${pdf_files[@]}"
 
-          echo "成功生成合并并压缩后的PDF：${OUTPUT_DIR}/merged_compressed.pdf"
+          echo "成功生成合并并压缩后的PDF：OUTPUT_DIR/m***ed.pdf"
 
       - name: Merge TXT files with strict check
         run: |
@@ -156,7 +156,7 @@ jobs:
                       outfile.write(infile.read())
                       outfile.write("\n\n")  # 每个TXT文件后插入两个空行
           
-          print(f"成功合并 {len(txt_files)} 个TXT文件到：{output_txt_path}")
+          print(f"成功合并 {len(txt_files)} 个TXT文件到：output_txt_path")
           EOF
 
       - name: Commit results
