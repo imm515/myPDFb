@@ -55,34 +55,49 @@ jobs:
           import os
           import re
           import subprocess
-
+          import shutil
+          
           SOURCE = os.getenv("SOURCE_DIR")
           DEST = os.getenv("DEST_DIR")
           existing_files = [f for f in os.listdir(DEST) if f.endswith('.pdf')]
           counter = max([int(f.split('_')[0]) for f in existing_files]) if existing_files else 0
           all_files = []
-
+          
           for root, _, files in os.walk(SOURCE):
               for f in files:
                   if f.endswith('.pdf') and any(part in f for part in ['1top', '2mid', '3bot']):
                       all_files.append(os.path.join(root, f))
-
+          
           def natural_sort_key(s):
               return [int(text) if text.isdigit() else text.lower()
                       for text in re.split(r'(\d+)', s)]
-
+          
           all_files.sort(key=natural_sort_key)
-
+          
           def is_pdf_empty(pdf_path):
+              # 创建一个临时目录
+              temp_dir = "/tmp/ghostscript_temp"
+              os.makedirs(temp_dir, exist_ok=True)
+              
+              # 将文件复制到临时目录（避免路径中的中文字符和空格问题）
+              temp_pdf = os.path.join(temp_dir, "temp_input.pdf")
+              shutil.copy(pdf_path, temp_pdf)
+              
               # 使用 Ghostscript 将 PDF 转换为新的 PDF 文件
-              temp_pdf = "/tmp/temp_output.pdf"
-              command = f"gs -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dQUIET -sOutputFile={temp_pdf} {pdf_path}"
-              subprocess.run(command, shell=True, check=True)
+              temp_output = os.path.join(temp_dir, "temp_output.pdf")
+              command = f'gs -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dQUIET -sOutputFile="{temp_output}" "{temp_pdf}"'
+              try:
+                  subprocess.run(command, shell=True, check=True)
+              except subprocess.CalledProcessError as e:
+                  print(f"Ghostscript failed to process {pdf_path}: {e}")
+                  shutil.rmtree(temp_dir)
+                  return False
+              
               # 检查文件大小
-              file_size = os.path.getsize(temp_pdf)
-              os.remove(temp_pdf)
+              file_size = os.path.getsize(temp_output)
+              shutil.rmtree(temp_dir)
               return file_size < 50 * 1024  # 小于 50 KB 认为是空白
-
+          
           for filepath in all_files:
               filename = os.path.basename(filepath)
               match = re.search(r'p(\d+)_(1top|2mid|3bot)', filename)
@@ -91,7 +106,7 @@ jobs:
               page_num = match.group(1)
               part_type = match.group(2)
               txt_path = filepath.replace('.pdf', '.txt')
-
+          
               if os.path.exists(txt_path):
                   with open(txt_path, 'r', encoding='utf-8') as f:
                       content = f.read().strip()
