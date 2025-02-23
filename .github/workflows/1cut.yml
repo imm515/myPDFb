@@ -54,8 +54,12 @@ jobs:
       - name: List PDF files in private repo (root directory only)
         run: |
           find private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
-          echo "Found PDF files:"
+          #echo "Found PDF files:"
           #cat pdf_files.txt
+
+          # 输出模糊化后的内容
+          echo "Found PDF files (masked):"
+          cat pdf_files.txt | awk '{print substr($0, 1, 3) "***" substr($0, length($0)-4)}'
 
       - name: Extract text and split PDF into parts
         run: |
