@@ -14,13 +14,20 @@ concurrency:
 jobs:
   file-matcher:
     runs-on: ubuntu-latest
-    env:
-      WORK_DIR: ${{ secrets.PRIVATE_DIR }}/cb202501  # 工作目录
-      SOURCE_DIR: $WORK_DIR/2name  # 源目录
-      TARGET_DIR: $WORK_DIR/3查找   # 目标目录
-      SEARCH_FILE: ${{ secrets.PRIVATE_DIR }}/cb202501/#查找单号  # 查找单号文件路径
-
     steps:
+      - name: 设置工作目录环境变量
+        run: echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/cb202501" >> $GITHUB_ENV
+
+      - name: 使用工作目录
+        run: |
+          echo "工作目录是：$WORK_DIR"
+          SOURCE_DIR="$WORK_DIR/2name"
+          TARGET_DIR="$WORK_DIR/3查找"
+          SEARCH_FILE="${{ secrets.PRIVATE_DIR }}/cb202501/#查找单号"
+          echo "源目录是：$SOURCE_DIR"
+          echo "目标目录是：$TARGET_DIR"
+          echo "查找单号文件路径是：$SEARCH_FILE"
+
       - name: Checkout private repo
         uses: actions/checkout@v4
         with:
