@@ -1,9 +1,9 @@
 name: 2name
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   workflow_run:
-    workflows: ["1cut"]  # 依赖于 1cut 工作流
+    workflows: ["1cut"]
     types:
       - completed
 
@@ -15,9 +15,7 @@ jobs:
   process-naming:
     runs-on: ubuntu-latest
     env:
-      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
-      SOURCE_DIR: "$WORK_DIR/1cut"  # 源目录
-      DEST_DIR: "$WORK_DIR/2name"   # 目标目录
+      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"
 
     steps:
       - name: Checkout private repo
@@ -31,28 +29,25 @@ jobs:
       - name: Read WORK_DIR from file
         id: read_work_dir
         run: |
-          # 读取文件内容，忽略空白行和以 # 开头的行
           WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
           if [ -z "$WORK_DIR" ]; then
             echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
             exit 1
           fi
-          echo "WORK_DIR: $WORK_DIR"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+          echo "SOURCE_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR/1cut" >> $GITHUB_ENV
+          echo "DEST_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR/2name" >> $GITHUB_ENV
 
       - name: Initialize workspace
         run: |
           cd private-repo
-          # 清空旧目录
-          rm -rf "$DEST_DIR"
+          rm -rf "${{ env.DEST_DIR }}"
           echo "♻️ 已清空旧2name目录"
-          # 创建目标目录
-          mkdir -p "$DEST_DIR"
+          mkdir -p "${{ env.DEST_DIR }}"
 
       - name: Process files based on TXT content
         run: |
           cd private-repo
-          # 将 Python 逻辑写入临时脚本
           cat << 'EOF' > process_files.py
           import os
           import re
@@ -60,25 +55,21 @@ jobs:
           SOURCE = os.getenv("SOURCE_DIR")
           DEST = os.getenv("DEST_DIR")
 
-          # 获取已存在的最大序号
           existing_files = [f for f in os.listdir(DEST) if f.endswith('.pdf')]
           counter = max([int(f.split('_')[0]) for f in existing_files]) if existing_files else 0
 
-          # 按自然顺序处理文件
           all_files = []
           for root, _, files in os.walk(SOURCE):
               for f in files:
                   if f.endswith('.pdf') and any(part in f for part in ['1top', '2mid', '3bot']):
                       all_files.append(os.path.join(root, f))
 
-          # 自然排序算法
           def natural_sort_key(s):
               return [int(text) if text.isdigit() else text.lower()
                       for text in re.split(r'(\d+)', s)]
 
           all_files.sort(key=natural_sort_key)
 
-          # 主处理循环
           for filepath in all_files:
               filename = os.path.basename(filepath)
               match = re.search(r'p(\d+)_(1top|2mid|3bot)', filename)
@@ -87,32 +78,24 @@ jobs:
 
               page_num = match.group(1)
               part_type = match.group(2)
-
-              # 查找对应的 TXT 文件
               txt_path = filepath.replace('.pdf', '.txt')
 
-              # 判断 TXT 文件是否为空
               if os.path.exists(txt_path):
                   with open(txt_path, 'r', encoding='utf-8') as f:
                       content = f.read().strip()
-                  if content:  # 如果 TXT 文件不为空
+                  if content:
                       counter += 1
                       new_name = f"{counter:04d}_{page_num}{part_type}"
-                      # 复制 PDF 文件
                       os.system(f"cp '{filepath}' '{os.path.join(DEST, new_name)}.pdf'")
-                      # 复制 TXT 文件
                       os.system(f"cp '{txt_path}' '{os.path.join(DEST, new_name)}.txt'")
                       print(f"Processed: {filename} → {new_name}.pdf & .txt")
                   else:
-                      # 如果 TXT 文件为空，删除对应的 PDF 和 TXT 文件
                       os.remove(filepath)
                       os.remove(txt_path)
                       print(f"Deleted empty: {filename} and {os.path.basename(txt_path)}")
               else:
                   print(f"TXT file not found for: {filename}")
           EOF
-
-          # 运行 Python 脚本
           python3 process_files.py
 
       - name: Commit and push results
@@ -121,19 +104,13 @@ jobs:
           git config user.email "doc-processor@auto"
           git config user.name "Document Processor"
 
-          # 生成智能提交信息
-          file_count=$(find "$DEST_DIR" -type f -name "*.pdf" | wc -l)
+          file_count=$(find "${{ env.DEST_DIR }}" -type f -name "*.pdf" | wc -l)
           commit_msg="Auto: Generated $file_count named slices and paired TXT files"
 
-          # 添加更改到暂存区
-          git add "$DEST_DIR"
-
-          # 检查是否有 staged 的更改
+          git add "${{ env.DEST_DIR }}"
           if git diff --cached --quiet; then
             echo "No staged changes to commit. Skipping commit and push."
             exit 0
           fi
-
-          # 如果有 staged 的更改，则提交并推送
           git commit -m "$commit_msg"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
