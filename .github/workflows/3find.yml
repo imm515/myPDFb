@@ -17,8 +17,8 @@ jobs:
     env:
       WORK_DIR: "${{ secrets.PRIVATE_DIR }}/cb202501"  # 工作目录
       SOURCE_DIR: "$WORK_DIR/2name"  # 源目录
-      TARGET_DIR: "$WORK_DIR/3查找"   # 目标目录
-      SEARCH_FILE: '$WORK_DIR/#查找单号'  # 查找单号文件路径
+      TARGET_DIR: "$WORK_DIR/3查找"  # 目标目录
+      SEARCH_FILE: "$WORK_DIR/#查找单号"  # 查找单号文件路径
 
     steps:
       - name: Checkout private repo
@@ -47,6 +47,10 @@ jobs:
       - name: Initialize directories
         run: |
           cd private-repo
+          # 替换 # 为 %23
+          SEARCH_FILE_PATH="${SEARCH_FILE//#/%23}"
+          echo "SEARCH_FILE_PATH: $SEARCH_FILE_PATH"  # 输出替换后的路径
+          
           # 清空旧目录
           rm -rf "$TARGET_DIR"
           echo "♻️ 已清空旧3查找目录"
@@ -54,8 +58,8 @@ jobs:
           mkdir -p "$TARGET_DIR"
           
           # 检查查找单号文件是否存在
-          if [ ! -f "$SEARCH_FILE" ]; then
-            echo "::error::查找单号文件不存在：$SEARCH_FILE"
+          if [ ! -f "$SEARCH_FILE_PATH" ]; then
+            echo "::error::查找单号文件不存在：$SEARCH_FILE_PATH"
             exit 1
           fi
 
@@ -71,7 +75,7 @@ jobs:
 
           source_dir = Path(os.getenv("SOURCE_DIR"))
           target_dir = Path(os.getenv("TARGET_DIR"))
-          search_file = Path(os.getenv("SEARCH_FILE"))
+          search_file = Path(os.getenv("SEARCH_FILE_PATH"))
 
           # 解析查找单号文件
           search_numbers = []
@@ -106,8 +110,7 @@ jobs:
               if file_num in search_numbers:
                   # 打开 PDF 文件
                   pdf_document = fitz.open(file_path)
-                  
-                  # 仅处理第一页（假设 PDF 是单页的）
+                   # 仅处理第一页（假设 PDF 是单页的）
                   page = pdf_document.load_page(0)
                   # 获取页面尺寸
                   rect = page.rect
