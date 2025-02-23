@@ -7,6 +7,11 @@ jobs:
   process-pdf:
     runs-on: ubuntu-latest
 
+    # 设置环境变量
+    env:
+      WORK_DIR: "${{ secrets.PRIVATE_DIR }}/cb202501"  # 工作目录
+      OUTPUT_DIR: "1cut"  # 输出目录
+
     steps:
       - name: Checkout public repo
         uses: actions/checkout@v4
@@ -25,26 +30,26 @@ jobs:
           sudo apt-get install -y poppler-utils python3-pip
           pip3 install PyMuPDF
 
-      - name: Clean 1cut directory
+      - name: Clean output directory
         run: |
-          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          if [ -d "$OUTPUT_DIR" ]; then
-            rm -rf "$OUTPUT_DIR"/*
+          OUTPUT_PATH="private-repo/$WORK_DIR/$OUTPUT_DIR"
+          if [ -d "$OUTPUT_PATH" ]; then
+            rm -rf "$OUTPUT_PATH"/*
           else
-            mkdir -p "$OUTPUT_DIR"
+            mkdir -p "$OUTPUT_PATH"
           fi
 
       - name: List PDF files in private repo (root directory only)
         run: |
-          find private-repo/${{ secrets.PRIVATE_DIR }} -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
+          find private-repo/$WORK_DIR -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
           echo "Found PDF files:"
           cat pdf_files.txt
 
       - name: Extract text and split PDF into parts
         run: |
           # 初始化输出目录
-          OUTPUT_DIR="private-repo/${{ secrets.PRIVATE_DIR }}/1cut"
-          mkdir -p "$OUTPUT_DIR"
+          OUTPUT_PATH="private-repo/$WORK_DIR/$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_PATH"
       
           # 将 Python 逻辑写入临时脚本
           cat << 'EOF' > process_pdf.py
@@ -107,7 +112,7 @@ jobs:
           # 循环处理每个 PDF 文件
           for pdf_path in "${pdf_files[@]}"; do
             echo "Processing: $pdf_path"
-            python3 process_pdf.py "$pdf_path" "$OUTPUT_DIR"
+            python3 process_pdf.py "$pdf_path" "$OUTPUT_PATH"
           done
 
       - name: Commit and push to private repo
