@@ -21,12 +21,10 @@ jobs:
       - name: 使用工作目录
         run: |
           echo "工作目录是：$WORK_DIR"
-          SOURCE_DIR="$WORK_DIR/2name"
-          TARGET_DIR="$WORK_DIR/3查找"
-          SEARCH_FILE="${{ secrets.PRIVATE_DIR }}/cb202501/#查找单号"
-          echo "源目录是：$SOURCE_DIR"
-          echo "目标目录是：$TARGET_DIR"
-          echo "查找单号文件路径是：$SEARCH_FILE"
+          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/cb202501" >> $GITHUB_ENV
+          echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
+          echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
+          echo "SEARCH_FILE=${{ secrets.PRIVATE_DIR }}/cb202501/#查找单号" >> $GITHUB_ENV
 
       - name: Checkout private repo
         uses: actions/checkout@v4
