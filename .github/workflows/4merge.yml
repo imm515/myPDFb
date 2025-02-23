@@ -2,7 +2,6 @@ name: 4merge
 
 on:
   workflow_dispatch:
-
   workflow_run:
     workflows: ["3find"]
     types:
@@ -15,12 +14,21 @@ concurrency:
 jobs:
   pdf-merger:
     runs-on: ubuntu-latest
-    env:
-      SOURCE_DIR: ${{ secrets.PRIVATE_DIR }}/3查找
-      OUTPUT_DIR: ${{ secrets.PRIVATE_DIR }}/4拼接PDF
-      SEARCH_FILE: ${{ secrets.PRIVATE_DIR }}/#查找单号  # 新增：引入查找单号文件路径
-
     steps:
+      - name: 设置工作目录环境变量
+        run: |
+          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/cb202501" >> $GITHUB_ENV
+          echo "SOURCE_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
+          echo "OUTPUT_DIR=$WORK_DIR/4拼接PDF" >> $GITHUB_ENV
+          echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
+
+      - name: 使用工作目录
+        run: |
+          echo "工作目录是：$WORK_DIR"
+          echo "源目录是：$SOURCE_DIR"
+          echo "目标目录是：$OUTPUT_DIR"
+          echo "查找单号文件是：$SEARCH_FILE"
+
       - name: Checkout private repo
         uses: actions/checkout@v4
         with:
