@@ -24,7 +24,7 @@ jobs:
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/cb202501" >> $GITHUB_ENV
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          echo "SEARCH_FILE=${{ secrets.PRIVATE_DIR }}/cb202501/#查找单号" >> $GITHUB_ENV
+          echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
 
       - name: Checkout private repo
         uses: actions/checkout@v4
