@@ -131,7 +131,8 @@ jobs:
             #echo "Processing: $pdf_path"
 
             # 模糊化路径显示
-            masked_path="${pdf_path:0:3}***${pdf_path: -5}"
+            #masked_path="${pdf_path:0:3}***${pdf_path: -5}"
+            masked_path="${pdf_path:0:10}***${pdf_path: -8}"            
             echo "Processing: $masked_path"
             
             python3 process_pdf.py "$pdf_path" "$OUTPUT_PATH"
