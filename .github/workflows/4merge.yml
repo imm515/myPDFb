@@ -16,8 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 设置工作目录环境变量
+        run: echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/cb202501" >> $GITHUB_ENV
+    
+      - name: 设置工作目录环境变量
         run: |
-          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/cb202501" >> $GITHUB_ENV
           echo "SOURCE_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           echo "OUTPUT_DIR=$WORK_DIR/4拼接PDF" >> $GITHUB_ENV
           echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
