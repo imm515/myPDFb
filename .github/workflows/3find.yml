@@ -35,12 +35,12 @@ jobs:
             echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
             exit 1
           fi
-          echo "WORK_DIR: $WORK_DIR"
+          echo "WORK_DIR: WORK_DIR"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
 
       - name: 使用工作目录
         run: |
-          echo "工作目录是：$WORK_DIR"
+          echo "工作目录是：WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
