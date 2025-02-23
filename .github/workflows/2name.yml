@@ -116,22 +116,23 @@ jobs:
                       new_name = f"{counter:04d}_{page_num}{part_type}"
                       os.system(f"cp '{filepath}' '{os.path.join(DEST, new_name)}.pdf'")
                       os.system(f"cp '{txt_path}' '{os.path.join(DEST, new_name)}.txt'")
-                      print(f"Processed: {filename} → {new_name}.pdf & .txt")
+                      #print(f"Processed: {filename} → {new_name}.pdf & .txt")
+                      print(f"Processed: filename → {new_name}.pdf & .txt")                      
                   else:
                       # 如果 TXT 是空白的，检查 PDF 是否也是空白的
                       if is_pdf_empty(filepath):
                           os.remove(filepath)
                           os.remove(txt_path)
-                          print(f"Deleted empty: {filename} and {os.path.basename(txt_path)}")
+                          print(f"Deleted empty: filename and {os.path.basename(txt_path)}")
                       else:
                           # 如果 PDF 不是空白的，保留文件并继续处理
                           counter += 1
                           new_name = f"{counter:04d}_{page_num}{part_type}"
                           os.system(f"cp '{filepath}' '{os.path.join(DEST, new_name)}.pdf'")
                           os.system(f"cp '{txt_path}' '{os.path.join(DEST, new_name)}.txt'")
-                          print(f"Processed (no text but PDF has content): {filename} → {new_name}.pdf & .txt")
+                          print(f"Processed (no text but PDF has content): filename → {new_name}.pdf & .txt")
               else:
-                  print(f"TXT file not found for: {filename}")
+                  print(f"TXT file not found for: filename")
           EOF
           python3 process_files.py
 
