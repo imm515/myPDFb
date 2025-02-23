@@ -45,6 +45,11 @@ jobs:
           echo "♻️ 已清空旧2name目录"
           mkdir -p "${{ env.DEST_DIR }}"
 
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pymupdf
+          
       - name: Process files based on PDF content
         run: |
           cd private-repo
