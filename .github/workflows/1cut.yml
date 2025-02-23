@@ -9,7 +9,7 @@ jobs:
 
     # 设置环境变量
     env:
-      WORK_DIR: "${{ secrets.PRIVATE_DIR }}/cb202501"  # 工作目录
+      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
       OUTPUT_DIR: "1cut"  # 输出目录
 
     steps:
@@ -24,6 +24,18 @@ jobs:
           path: private-repo
           ref: main
 
+      - name: Read WORK_DIR from file
+        id: read_work_dir
+        run: |
+          # 读取文件内容，忽略空白行和以 # 开头的行
+          WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
+          if [ -z "$WORK_DIR" ]; then
+            echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
+            exit 1
+          fi
+          echo "WORK_DIR: $WORK_DIR"
+          echo "WORK_DIR=$WORK_DIR" >> $GITHUB_ENV
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -32,7 +44,7 @@ jobs:
 
       - name: Clean output directory
         run: |
-          OUTPUT_PATH="private-repo/$WORK_DIR/$OUTPUT_DIR"
+          OUTPUT_PATH="private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR/$OUTPUT_DIR"
           if [ -d "$OUTPUT_PATH" ]; then
             rm -rf "$OUTPUT_PATH"/*
           else
@@ -41,14 +53,14 @@ jobs:
 
       - name: List PDF files in private repo (root directory only)
         run: |
-          find private-repo/$WORK_DIR -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
+          find private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
           echo "Found PDF files:"
           cat pdf_files.txt
 
       - name: Extract text and split PDF into parts
         run: |
           # 初始化输出目录
-          OUTPUT_PATH="private-repo/$WORK_DIR/$OUTPUT_DIR"
+          OUTPUT_PATH="private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR/$OUTPUT_DIR"
           mkdir -p "$OUTPUT_PATH"
       
           # 将 Python 逻辑写入临时脚本
