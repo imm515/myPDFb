@@ -55,64 +55,64 @@ jobs:
         run: |
           cd private-repo
           cat << 'EOF' > process_files.py
-import os
-import subprocess
-
-def is_pdf_empty(pdf_path, min_size_kb=50):
-    """
-    判断PDF是否为空白，通过Ghostscript转换后文件的大小来判断。
-    如果生成的图像文件非常小（小于指定的阈值），则认为该PDF为空白。
-    """
-    # 使用Ghostscript将PDF转换为PNG图像
-    output_image = "/tmp/temp_image.png"
-    gs_command = [
-        "gs", 
-        "-dNOPAUSE", "-dBATCH", 
-        "-sDEVICE=pngalpha", 
-        "-sOutputFile=" + output_image, 
-        "-r144",  # 设置分辨率
-        pdf_path
-    ]
-    
-    try:
-        subprocess.run(gs_command, check=True)
-
-        # 获取转换后的图像文件大小（单位：KB）
-        file_size_kb = os.path.getsize(output_image) / 1024  # 转换为KB
-
-        print(f"Generated image size: {file_size_kb:.2f} KB")
-
-        # 如果文件大小小于指定的最小值，则认为该PDF为空白
-        if file_size_kb < min_size_kb:
-            print(f"{pdf_path} is considered empty (file size: {file_size_kb:.2f} KB).")
-            return True
-        else:
-            print(f"{pdf_path} is not empty (file size: {file_size_kb:.2f} KB).")
-            return False
-    
-    except subprocess.CalledProcessError as e:
-        print(f"Error processing PDF with Ghostscript: {e}")
-        return True  # 如果转换出错，可以认为PDF为空白
-
-SOURCE = os.getenv("SOURCE_DIR")
-DEST = os.getenv("DEST_DIR")
-
-all_files = []
-for root, _, files in os.walk(SOURCE):
-    for f in files:
-        if f.endswith('.pdf') and any(part in f for part in ['1top', '2mid', '3bot']):
-            all_files.append(os.path.join(root, f))
-
-for filepath in all_files:
-    if is_pdf_empty(filepath):
-        print(f"Deleted empty PDF: {filepath}")
-        os.remove(filepath)
-    else:
-        filename = os.path.basename(filepath)
-        new_name = f"processed_{filename}"
-        os.system(f"cp '{filepath}' '{os.path.join(DEST, new_name)}.pdf'")
-        print(f"Processed: {filename} → {new_name}.pdf")
-EOF
+          import os
+          import subprocess
+          
+          def is_pdf_empty(pdf_path, min_size_kb=50):
+              """
+              判断PDF是否为空白，通过Ghostscript转换后文件的大小来判断。
+              如果生成的图像文件非常小（小于指定的阈值），则认为该PDF为空白。
+              """
+              # 使用Ghostscript将PDF转换为PNG图像
+              output_image = "/tmp/temp_image.png"
+              gs_command = [
+                  "gs", 
+                  "-dNOPAUSE", "-dBATCH", 
+                  "-sDEVICE=pngalpha", 
+                  "-sOutputFile=" + output_image, 
+                  "-r144",  # 设置分辨率
+                  pdf_path
+              ]
+              
+              try:
+                  subprocess.run(gs_command, check=True)
+          
+                  # 获取转换后的图像文件大小（单位：KB）
+                  file_size_kb = os.path.getsize(output_image) / 1024  # 转换为KB
+          
+                  print(f"Generated image size: {file_size_kb:.2f} KB")
+          
+                  # 如果文件大小小于指定的最小值，则认为该PDF为空白
+                  if file_size_kb < min_size_kb:
+                      print(f"{pdf_path} is considered empty (file size: {file_size_kb:.2f} KB).")
+                      return True
+                  else:
+                      print(f"{pdf_path} is not empty (file size: {file_size_kb:.2f} KB).")
+                      return False
+              
+              except subprocess.CalledProcessError as e:
+                  print(f"Error processing PDF with Ghostscript: {e}")
+                  return True  # 如果转换出错，可以认为PDF为空白
+          
+          SOURCE = os.getenv("SOURCE_DIR")
+          DEST = os.getenv("DEST_DIR")
+          
+          all_files = []
+          for root, _, files in os.walk(SOURCE):
+              for f in files:
+                  if f.endswith('.pdf') and any(part in f for part in ['1top', '2mid', '3bot']):
+                      all_files.append(os.path.join(root, f))
+          
+          for filepath in all_files:
+              if is_pdf_empty(filepath):
+                  print(f"Deleted empty PDF: {filepath}")
+                  os.remove(filepath)
+              else:
+                  filename = os.path.basename(filepath)
+                  new_name = f"processed_{filename}"
+                  os.system(f"cp '{filepath}' '{os.path.join(DEST, new_name)}.pdf'")
+                  print(f"Processed: {filename} → {new_name}.pdf")
+          EOF
           python3 process_files.py
 
       - name: Commit and push results
