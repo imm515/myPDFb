@@ -123,7 +123,8 @@ jobs:
                       if is_pdf_empty(filepath):
                           os.remove(filepath)
                           os.remove(txt_path)
-                          print(f"Deleted empty: filename and {os.path.basename(txt_path)}")
+                          #print(f"Deleted empty: {filename} and {os.path.basename(txt_path)}")
+                          print(f"Deleted empty: filename and os.path.basename(txt_path)")
                       else:
                           # 如果 PDF 不是空白的，保留文件并继续处理
                           counter += 1
