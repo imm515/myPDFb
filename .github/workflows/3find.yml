@@ -18,7 +18,7 @@ jobs:
       WORK_DIR: "${{ secrets.PRIVATE_DIR }}/cb202501"  # 工作目录
       SOURCE_DIR: "$WORK_DIR/2name"  # 源目录
       TARGET_DIR: "$WORK_DIR/3查找"  # 目标目录
-      SEARCH_FILE: "$WORK_DIR/#查找单号"  # 查找单号文件路径
+      SEARCH_FILE: "${{ secrets.PRIVATE_DIR }}/cb202501/%23查找单号"  # 替换后的查找单号文件路径
 
     steps:
       - name: Checkout private repo
@@ -47,9 +47,8 @@ jobs:
       - name: Initialize directories
         run: |
           cd private-repo
-          # 替换 # 为 %23
-          SEARCH_FILE_PATH="${SEARCH_FILE//#/%23}"
-          echo "SEARCH_FILE_PATH: $SEARCH_FILE_PATH"  # 输出替换后的路径
+          # 输出路径，检查是否正确
+          echo "SEARCH_FILE: $SEARCH_FILE"
           
           # 清空旧目录
           rm -rf "$TARGET_DIR"
@@ -58,8 +57,8 @@ jobs:
           mkdir -p "$TARGET_DIR"
           
           # 检查查找单号文件是否存在
-          if [ ! -f "$SEARCH_FILE_PATH" ]; then
-            echo "::error::查找单号文件不存在：$SEARCH_FILE_PATH"
+          if [ ! -f "$SEARCH_FILE" ]; then
+            echo "::error::查找单号文件不存在：$SEARCH_FILE"
             exit 1
           fi
 
@@ -75,7 +74,7 @@ jobs:
 
           source_dir = Path(os.getenv("SOURCE_DIR"))
           target_dir = Path(os.getenv("TARGET_DIR"))
-          search_file = Path(os.getenv("SEARCH_FILE_PATH"))
+          search_file = Path(os.getenv("SEARCH_FILE"))
 
           # 解析查找单号文件
           search_numbers = []
