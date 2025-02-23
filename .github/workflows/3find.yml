@@ -16,8 +16,19 @@ jobs:
     runs-on: ubuntu-latest
     env:
       WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
+      SOURCE_DIR: "$WORK_DIR/2name"  # 源目录
+      TARGET_DIR: "$WORK_DIR/3查找"   # 目标目录
+      SEARCH_FILE: "$WORK_DIR/#查找单号"  # 查找单号文件路径
 
     steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.PRIVATE_REPO }}
+          token: ${{ secrets.PAT }}
+          path: private-repo
+          ref: main
+
       - name: Read WORK_DIR from file
         id: read_work_dir
         run: |
@@ -29,21 +40,6 @@ jobs:
           fi
           echo "WORK_DIR: $WORK_DIR"
           echo "WORK_DIR=$WORK_DIR" >> $GITHUB_ENV
-
-      - name: 使用工作目录
-        run: |
-          echo "工作目录是：$WORK_DIR"
-          echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
-          echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
-
-      - name: Checkout private repo
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ secrets.PRIVATE_REPO }}
-          token: ${{ secrets.PAT }}
-          path: private-repo
-          ref: main
 
       - name: Setup Python
         uses: actions/setup-python@v4
