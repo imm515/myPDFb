@@ -35,7 +35,7 @@ jobs:
             echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
             exit 1
           fi
-          echo "WORK_DIR: $WORK_DIR"
+          echo "WORK_DIR: WORK_DIR"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
 
       - name: 设置工作目录环境变量
