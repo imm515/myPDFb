@@ -151,5 +151,5 @@ jobs:
             echo "No staged changes to commit. Skipping commit and push."
             exit 0
           fi
-          git commit -m "$commit_msg"
+          git commit -m "$commit_msg" > /dev/null 2>&1
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
