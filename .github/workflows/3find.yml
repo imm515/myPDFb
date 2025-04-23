@@ -43,7 +43,7 @@ jobs:
           echo "工作目录是：WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
+          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
 
       - name: Setup Python
         uses: actions/setup-python@v4
