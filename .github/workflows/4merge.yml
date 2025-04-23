@@ -42,7 +42,7 @@ jobs:
         run: |
           echo "SOURCE_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           echo "OUTPUT_DIR=$WORK_DIR/4拼接PDF" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
+          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
 
       - name: 使用工作目录
         run: |
