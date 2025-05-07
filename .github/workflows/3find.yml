@@ -41,20 +41,24 @@ jobs:
       - name: 使用工作目录
         run: |
           echo "工作目录是：$WORK_DIR"
-          echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
-          echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           
-          # 处理含 # 号的文件名（兼容有无 .v 后缀）
-          SEARCH_FILE_WITH_V="$WORK_DIR/"#查找单号.v  # 显式引用 # 号
+          # 显式处理含 # 的文件名
+          SEARCH_FILE_WITH_V="$WORK_DIR/"#查找单号.v
           SEARCH_FILE_WITHOUT_V="$WORK_DIR/"#查找单号
           
+          # 调试输出
+          echo "尝试路径1: $SEARCH_FILE_WITH_V"
+          echo "尝试路径2: $SEARCH_FILE_WITHOUT_V"
+          
+          # 检查文件存在性
           if [ -f "$SEARCH_FILE_WITH_V" ]; then
             SEARCH_FILE="$SEARCH_FILE_WITH_V"
           elif [ -f "$SEARCH_FILE_WITHOUT_V" ]; then
             SEARCH_FILE="$SEARCH_FILE_WITHOUT_V"
           else
             echo "::error::查找单号文件不存在（尝试路径：$SEARCH_FILE_WITH_V 或 $SEARCH_FILE_WITHOUT_V）"
-            ls -la "$WORK_DIR/"  # 打印目录内容辅助调试
+            echo "WORK_DIR 实际内容："
+            ls -la "$WORK_DIR"
             exit 1
           fi
           
