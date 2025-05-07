@@ -15,7 +15,7 @@ jobs:
   pdf-merger:
     runs-on: ubuntu-latest
     env:
-      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录"  # 工作目录配置文件路径
+      WORK_DIR_BASE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录"  # 工作目录配置文件路径
 
     steps:
       - name: Checkout private repo
