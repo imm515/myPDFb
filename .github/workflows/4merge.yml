@@ -38,17 +38,29 @@ jobs:
           fi
           echo "WORK_DIR: WORK_DIR"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+          
       - name: 设置工作目录环境变量
         run: |
           echo "SOURCE_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           echo "OUTPUT_DIR=$WORK_DIR/4拼接PDF" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
+
+                    
+          # 兼容带.v后缀和不带后缀的情况
+          if [ -f "$WORK_DIR/#查找单号.v" ]; then
+            SEARCH_FILE_PATH="#查找单号.v"
+          else
+            SEARCH_FILE_PATH="#查找单号"
+          fi
+          echo "SEARCH_FILE=$WORK_DIR/$SEARCH_FILE_PATH" >> $GITHUB_ENV
+          
+          
       - name: 使用工作目录
         run: |
           echo "工作目录是：WORK_DIR"
           echo "源目录是：SOURCE_DIR"
           echo "目标目录是：OUTPUT_DIR"
           echo "查找单号文件是：SEARCH_FILE"
+          
       - name: Install Ghostscript
         run: |
           sudo apt-get update
