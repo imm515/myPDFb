@@ -1,9 +1,8 @@
 name: 3find
-
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   workflow_run:
-    workflows: ["2name"]  # 依赖于 2name 工作流
+    workflows: ["2name"]
     types:
       - completed
 
@@ -15,7 +14,7 @@ jobs:
   file-matcher:
     runs-on: ubuntu-latest
     env:
-      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
+      WORK_DIR_BASE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录"  # 基础文件名（不带后缀）
 
     steps:
       - name: Checkout private repo
@@ -26,37 +25,35 @@ jobs:
           path: private-repo
           ref: main
 
-      - name: Read WORK_DIR from file
+      - name: Detect and read WORK_DIR file
         id: read_work_dir
         run: |
-          # 定义可能的文件名
-          FILE_V="private-repo/$WORK_DIR_FILE.v"
-          FILE_NO_EXT="private-repo/$WORK_DIR_FILE"
+          # 尝试两种可能的文件名
+          FILE_V="private-repo/$WORK_DIR_BASE.v"
+          FILE_NO_EXT="private-repo/$WORK_DIR_BASE"
           
-          # 检测文件是否存在（优先尝试带 .v 的版本）
           if [ -f "$FILE_V" ]; then
+            echo "使用带.v后缀的工作目录文件"
             WORK_DIR=$(grep -v -e '^#' -e '^$' "$FILE_V" | head -n 1)
-            echo "检测到带 .v 后缀的工作目录文件"
           elif [ -f "$FILE_NO_EXT" ]; then
+            echo "使用无后缀的工作目录文件"
             WORK_DIR=$(grep -v -e '^#' -e '^$' "$FILE_NO_EXT" | head -n 1)
-            echo "检测到不带后缀的工作目录文件"
           else
-            echo "::error::工作目录文件不存在：$FILE_V 或 $FILE_NO_EXT"
+            echo "::error::工作目录文件不存在（尝试路径: $FILE_V 和 $FILE_NO_EXT）"
             exit 1
           fi
-      
-          # 验证 WORK_DIR 内容
-          if [ -z "$WORK_DIR" ]; then
-            echo "::error::文件内容无效：未找到有效的 WORK_DIR"
-            exit 1
-          fi
-      
-          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
-          echo "最终工作目录：${{ secrets.PRIVATE_DIR }}/$WORK_DIR"
 
-      - name: 使用工作目录
+          if [ -z "$WORK_DIR" ]; then
+            echo "::error::工作目录文件内容无效"
+            exit 1
+          fi
+          
+          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+          echo "工作目录路径: ${{ secrets.PRIVATE_DIR }}/$WORK_DIR"
+
+      - name: Set working directories
         run: |
-          echo "工作目录是：WORK_DIR"
+          echo "当前工作目录: $WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
