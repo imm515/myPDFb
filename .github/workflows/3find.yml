@@ -44,16 +44,22 @@ jobs:
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           
-          # 智能检测文件后缀（处理#号）
-          if [ -f "$WORK_DIR/"#查找单号.v ]; then
-            SEARCH_FILE_PATH="#查找单号.v"
+          # 处理含 # 号的文件名（兼容有无 .v 后缀）
+          SEARCH_FILE_WITH_V="$WORK_DIR/"#查找单号.v  # 显式引用 # 号
+          SEARCH_FILE_WITHOUT_V="$WORK_DIR/"#查找单号
+          
+          if [ -f "$SEARCH_FILE_WITH_V" ]; then
+            SEARCH_FILE="$SEARCH_FILE_WITH_V"
+          elif [ -f "$SEARCH_FILE_WITHOUT_V" ]; then
+            SEARCH_FILE="$SEARCH_FILE_WITHOUT_V"
           else
-            SEARCH_FILE_PATH="#查找单号"
+            echo "::error::查找单号文件不存在（尝试路径：$SEARCH_FILE_WITH_V 或 $SEARCH_FILE_WITHOUT_V）"
+            ls -la "$WORK_DIR/"  # 打印目录内容辅助调试
+            exit 1
           fi
           
-          SEARCH_FILE="$WORK_DIR/$SEARCH_FILE_PATH"
-          echo "SEARCH_FILE=${SEARCH_FILE@Q}" >> $GITHUB_ENV
-          echo "检测到查找单号文件：${SEARCH_FILE_PATH@Q}"
+          echo "SEARCH_FILE=$SEARCH_FILE" >> $GITHUB_ENV
+          echo "检测到查找单号文件：$SEARCH_FILE"
           
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -75,12 +81,12 @@ jobs:
           mkdir -p "$TARGET_DIR"
           
           # 检查查找单号文件是否存在（带调试信息）
-          #if [ ! -f "${SEARCH_FILE}" ]; then
-          #  echo "::error::查找单号文件不存在：${SEARCH_FILE@Q}"
-          #  echo "当前目录内容："
-          #  ls -la "$WORK_DIR/"
-          #  exit 1
-          #fi
+          if [ ! -f "${SEARCH_FILE}" ]; then
+            echo "::error::查找单号文件不存在：${SEARCH_FILE@Q}"
+            echo "当前目录内容："
+            ls -la "$WORK_DIR/"
+            exit 1
+          fi
           
       - name: Process number matching
         run: |
