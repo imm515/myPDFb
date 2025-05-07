@@ -40,19 +40,20 @@ jobs:
           
       - name: 使用工作目录
         run: |
-          echo "工作目录是：WORK_DIR"
+          echo "工作目录是：$WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           
-          # 智能检测文件后缀
-          if [ -f "$WORK_DIR/#查找单号.v" ]; then
+          # 智能检测文件后缀（处理#号）
+          if [ -f "$WORK_DIR/"#查找单号.v ]; then
             SEARCH_FILE_PATH="#查找单号.v"
           else
             SEARCH_FILE_PATH="#查找单号"
           fi
           
-          echo "SEARCH_FILE=$WORK_DIR/$SEARCH_FILE_PATH" >> $GITHUB_ENV
-          echo "检测到查找单号文件：$SEARCH_FILE_PATH"
+          SEARCH_FILE="$WORK_DIR/$SEARCH_FILE_PATH"
+          echo "SEARCH_FILE=${SEARCH_FILE@Q}" >> $GITHUB_ENV
+          echo "检测到查找单号文件：${SEARCH_FILE_PATH@Q}"
           
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -73,9 +74,11 @@ jobs:
           # 创建目标目录
           mkdir -p "$TARGET_DIR"
           
-          # 检查查找单号文件是否存在
-          if [ ! -f "$SEARCH_FILE" ]; then
-            echo "::error::查找单号文件不存在：$SEARCH_FILE"
+          # 检查查找单号文件是否存在（带调试信息）
+          if [ ! -f "${SEARCH_FILE}" ]; then
+            echo "::error::查找单号文件不存在：${SEARCH_FILE@Q}"
+            echo "当前目录内容："
+            ls -la "$WORK_DIR/"
             exit 1
           fi
           
