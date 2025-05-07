@@ -29,14 +29,30 @@ jobs:
       - name: Read WORK_DIR from file
         id: read_work_dir
         run: |
-          # 读取文件内容，忽略空白行和以 # 开头的行
-          WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
-          if [ -z "$WORK_DIR" ]; then
-            echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
+          # 定义可能的文件名
+          FILE_V="private-repo/$WORK_DIR_FILE.v"
+          FILE_NO_EXT="private-repo/$WORK_DIR_FILE"
+          
+          # 检测文件是否存在（优先尝试带 .v 的版本）
+          if [ -f "$FILE_V" ]; then
+            WORK_DIR=$(grep -v -e '^#' -e '^$' "$FILE_V" | head -n 1)
+            echo "检测到带 .v 后缀的工作目录文件"
+          elif [ -f "$FILE_NO_EXT" ]; then
+            WORK_DIR=$(grep -v -e '^#' -e '^$' "$FILE_NO_EXT" | head -n 1)
+            echo "检测到不带后缀的工作目录文件"
+          else
+            echo "::error::工作目录文件不存在：$FILE_V 或 $FILE_NO_EXT"
             exit 1
           fi
-          echo "WORK_DIR: WORK_DIR"
+      
+          # 验证 WORK_DIR 内容
+          if [ -z "$WORK_DIR" ]; then
+            echo "::error::文件内容无效：未找到有效的 WORK_DIR"
+            exit 1
+          fi
+      
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+          echo "最终工作目录：${{ secrets.PRIVATE_DIR }}/$WORK_DIR"
 
       - name: 使用工作目录
         run: |
