@@ -37,12 +37,25 @@ jobs:
           fi
           echo "WORK_DIR: WORK_DIR"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+      
       - name: 使用工作目录
         run: |
-          echo "工作目录是：WORK_DIR"
+          echo "工作目录是：$WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
+          
+          # 查找可能的查找单号文件（兼容不同后缀）
+          SEARCH_FILE_PATTERN="$WORK_DIR/#查找单号*"
+          SEARCH_FILE=$(ls $SEARCH_FILE_PATTERN 2>/dev/null | head -n 1)
+          
+          if [ -z "$SEARCH_FILE" ]; then
+            echo "::error::找不到查找单号文件（尝试匹配：$SEARCH_FILE_PATTERN）"
+            exit 1
+          fi
+          
+          echo "找到查找单号文件：$SEARCH_FILE"
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
+          echo "SEARCH_FILE=$SEARCH_FILE" >> $GITHUB_ENV
+          
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
