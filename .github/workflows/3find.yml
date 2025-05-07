@@ -42,7 +42,24 @@ jobs:
           echo "工作目录是：WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
+          
+      - name: 查找查找单号文件（无后缀或 .v 后缀）
+        run: |
+          SEARCH_CANDIDATE_1="private-repo/$WORK_DIR/#查找单号"
+          SEARCH_CANDIDATE_2="private-repo/$WORK_DIR/#查找单号.v"
+          
+          if [ -f "$SEARCH_CANDIDATE_1" ]; then
+            MATCHED_SEARCH="$SEARCH_CANDIDATE_1"
+          elif [ -f "$SEARCH_CANDIDATE_2" ]; then
+            MATCHED_SEARCH="$SEARCH_CANDIDATE_2"
+          else
+            echo "::error::未找到查找单号文件。请确保存在：'#查找单号' 或 '#查找单号.v'"
+            exit 1
+          fi
+
+          echo "SEARCH_FILE=$MATCHED_SEARCH" >> $GITHUB_ENV
+          echo "✅ 识别到查找单号文件：$MATCHED_SEARCH"
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
