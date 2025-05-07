@@ -40,26 +40,25 @@ jobs:
           
       - name: 使用工作目录
         run: |
-          echo "工作目录是：WORK_DIR"
+          echo "工作目录是：$WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           
-
           # 兼容无后缀或任意后缀的情况（优先匹配无缀）
           if [ -f "$WORK_DIR/#查找单号" ]; then
             echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV
           elif [ -f "$WORK_DIR/#查找单号.v" ]; then
             echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
           else
-            # 尝试匹配任意后缀
-            found_file=$(find "$WORK_DIR" -maxdepth 1 -name '#查找单号.*' -print -quit)
-            if [ -n "$found_file" ]; then
+            # 尝试匹配任意后缀（使用更安全的find语法）
+            found_file=$(find "$WORK_DIR" -maxdepth 1 -name '#查找单号.*' -print -quit 2>/dev/null)
+            if [ -n "$found_file" ] && [ -f "$found_file" ]; then
               echo "SEARCH_FILE=$found_file" >> $GITHUB_ENV
             else
               echo "::error::未找到查找单号文件（支持格式：#查找单号、#查找单号.v、#查找单号.*）"
               exit 1
             fi
-          fi       
+          fi  
           
       - name: Setup Python
         uses: actions/setup-python@v4
