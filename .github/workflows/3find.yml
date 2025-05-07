@@ -37,12 +37,23 @@ jobs:
           fi
           echo "WORK_DIR: WORK_DIR"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+          
       - name: 使用工作目录
         run: |
           echo "工作目录是：WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
+          
+          # 智能检测文件后缀
+          if [ -f "$WORK_DIR/#查找单号.v" ]; then
+            SEARCH_FILE_PATH="#查找单号.v"
+          else
+            SEARCH_FILE_PATH="#查找单号"
+          fi
+          
+          echo "SEARCH_FILE=$WORK_DIR/$SEARCH_FILE_PATH" >> $GITHUB_ENV
+          echo "检测到查找单号文件：$SEARCH_FILE_PATH"
+          
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -52,6 +63,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pymupdf
+          
       - name: Initialize directories
         run: |
           cd private-repo
@@ -66,6 +78,7 @@ jobs:
             echo "::error::查找单号文件不存在：$SEARCH_FILE"
             exit 1
           fi
+          
       - name: Process number matching
         run: |
           cd private-repo
