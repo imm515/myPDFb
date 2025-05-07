@@ -41,16 +41,24 @@ jobs:
       - name: 使用工作目录
         run: |
           echo "工作目录是：$WORK_DIR"
-          echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           
-          # 方法1：转义#字符（推荐）
-          SEARCH_FILE=$(find "$WORK_DIR" -name "\#查找单号*" -o -name "\#查找单号.v" | head -n 1)
+          # 首先验证工作目录是否存在
+          if [ ! -d "$WORK_DIR" ]; then
+            echo "::error::工作目录不存在：$WORK_DIR"
+            exit 1
+          fi
           
-          # 方法2：使用引号包裹路径（备选）
-          # SEARCH_FILE=$(find "$WORK_DIR" -name "*#查找单号*" -o -name "*#查找单号.v" | head -n 1)
+          # 列出目录内容用于调试
+          echo "目录内容："
+          ls -la "$WORK_DIR"
+          
+          # 使用find命令查找文件（转义#字符）
+          SEARCH_FILE=$(find "$WORK_DIR" -maxdepth 1 -name "\#查找单号*" -o -name "\#查找单号.v" | head -n 1)
           
           if [ -z "$SEARCH_FILE" ]; then
             echo "::error::未找到文件（尝试路径：$WORK_DIR/#查找单号* 或 $WORK_DIR/#查找单号.v）"
+            echo "当前目录内容："
+            ls -la "$WORK_DIR"
             exit 1
           fi
           
