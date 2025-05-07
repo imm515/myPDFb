@@ -15,10 +15,7 @@ jobs:
   file-matcher:
     runs-on: ubuntu-latest
     env:
-      WORK_DIR_FILE_CANDIDATES: |  # 新增候选文件名列表
-        ${{ secrets.PRIVATE_DIR }}/myPDF工作目录
-        ${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v
-        ${{ secrets.PRIVATE_DIR }}/myPDF工作目录.conf      
+      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
 
     steps:
       - name: Checkout private repo
@@ -29,40 +26,17 @@ jobs:
           path: private-repo
           ref: main
 
-      - name: Detect config file  # 新增配置文件检测步骤
-        id: detect_config
-        run: |
-          # 将候选文件列表转换为数组
-          IFS=$'\n' read -d '' -ra candidates <<< "${{ env.WORK_DIR_FILE_CANDIDATES }}"
-          
-          # 遍历候选文件路径
-          for path in "${candidates[@]}"; do
-            if [ -f "private-repo/$path" ]; then
-              echo "找到配置文件：$path"
-              echo "WORK_DIR_FILE=$path" >> $GITHUB_ENV
-              exit 0
-            fi
-          done
-
-          # 如果未找到任何候选文件
-          echo "::error::未找到工作目录配置文件，请确保存在以下文件之一："
-          printf -- '- %s\n' "${candidates[@]}"
-          exit 1
-
-      - name: Read WORK_DIR from file  # 修改原步骤
+      - name: Read WORK_DIR from file
         id: read_work_dir
         run: |
-          # 使用检测到的文件路径
+          # 读取文件内容，忽略空白行和以 # 开头的行
           WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
-          
           if [ -z "$WORK_DIR" ]; then
-            echo "::error::配置文件 $WORK_DIR_FILE 中没有有效的工作目录"
+            echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
             exit 1
           fi
-          
-          echo "读取到工作目录：$WORK_DIR"
-          echo "WORK_DIR=${WORK_DIR}" >> $GITHUB_ENV
-          
+          echo "WORK_DIR: WORK_DIR"
+          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
       - name: 使用工作目录
         run: |
           echo "工作目录是：WORK_DIR"
