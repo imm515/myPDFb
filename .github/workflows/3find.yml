@@ -43,11 +43,11 @@ jobs:
           echo "工作目录是：$WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           
-          # 使用 find 命令匹配文件（更可靠）
-          SEARCH_FILE=$(find "$WORK_DIR" -name "*查找单号*" | head -n 1)
+          # 使用转义后的路径匹配
+          SEARCH_FILE=$(find "$WORK_DIR" -path "*/#查找单号*" | head -n 1)
           
           if [ -z "$SEARCH_FILE" ]; then
-            echo "::error::找不到查找单号文件（尝试匹配：$WORK_DIR/*查找单号*）"
+            echo "::error::未找到文件（尝试路径：$WORK_DIR/my农行回单/cb202504a/#查找单号*）"
             exit 1
           fi
           
