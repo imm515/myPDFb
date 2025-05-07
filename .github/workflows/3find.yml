@@ -15,7 +15,7 @@ jobs:
   file-matcher:
     runs-on: ubuntu-latest
     env:
-      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"
+      WORK_DIR_FILE: "myPDF工作目录.v"  # 仅文件名，不含路径
 
     steps:
       - name: Checkout private repo
@@ -26,64 +26,94 @@ jobs:
           path: private-repo
           ref: main
 
-      - name: Read WORK_DIR from file
+      - name: 读取工作目录配置
         id: read_work_dir
         run: |
-          WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
-          if [ -z "$WORK_DIR" ]; then
-            echo "::error::No valid WORK_DIR found in $WORK_DIR_FILE"
+          # 配置文件完整路径
+          CONFIG_PATH="private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR_FILE"
+          
+          # 验证配置文件存在
+          if [ ! -f "$CONFIG_PATH" ]; then
+            echo "::error::配置文件不存在：$CONFIG_PATH"
             exit 1
           fi
-          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+          
+          # 读取工作目录配置（过滤非法字符）
+          WORK_DIR_CONTENT=$(grep -v -e '^#' -e '^$' "$CONFIG_PATH" | head -n 1 | tr -cd '[:alnum:]/_-')
+          
+          # 构建完整工作路径
+          FULL_WORK_DIR="${GITHUB_WORKSPACE}/private-repo/${WORK_DIR_CONTENT}"
+          
+          # 验证工作目录存在
+          if [ ! -d "$FULL_WORK_DIR" ]; then
+            echo "::error::工作目录不存在：$FULL_WORK_DIR"
+            echo "::group::目录结构"
+            ls -la "${GITHUB_WORKSPACE}/private-repo"
+            echo "::endgroup::"
+            exit 1
+          fi
+          
+          echo "WORK_DIR=${FULL_WORK_DIR}" >> $GITHUB_ENV
+          echo "::notice::工作目录已设置为：${FULL_WORK_DIR}"
 
-      - name: 使用工作目录
+      - name: 设置目录结构
         run: |
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           
-          # 修改点：支持多后缀匹配
-          SEARCH_PATTERN="private-repo/$WORK_DIR/#查找单号*"
-          FOUND_FILE=$(ls -1 $SEARCH_PATTERN 2>/dev/null | head -n 1)
+          # 查找单号文件（修复#号处理）
+          SEARCH_PATTERN="$WORK_DIR/"'#查找单号'*
+          echo "查找模式：${SEARCH_PATTERN}"
           
-          if [ -z "$FOUND_FILE" ]; then
-            echo "::error::查找单号文件不存在，预期路径模式：$SEARCH_PATTERN"
+          # 安全查找方式
+          shopt -s nullglob
+          FOUND_FILES=(${SEARCH_PATTERN})
+          if [ ${#FOUND_FILES[@]} -eq 0 ]; then
+            echo "::error::未找到查找单号文件，请检查路径：$WORK_DIR"
+            echo "::group::目录内容"
+            ls -la "$WORK_DIR"
+            echo "::endgroup::"
             exit 1
           fi
-          echo "SEARCH_FILE=$FOUND_FILE" >> $GITHUB_ENV
+          
+          FOUND_FILE="${FOUND_FILES[0]}"
+          echo "SEARCH_FILE=${FOUND_FILE}" >> $GITHUB_ENV
+          echo "::notice::已定位查找文件：${FOUND_FILE}"
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pymupdf
-
-      - name: Initialize directories
+      - name: 初始化环境
         run: |
           cd private-repo
           rm -rf "$TARGET_DIR"
           mkdir -p "$TARGET_DIR"
+          echo "目录初始化完成：$(ls -l $TARGET_DIR)"
 
-      - name: Process number matching
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install pymupdf
+
+      - name: 处理PDF文件
         run: |
           cd private-repo
           python3 <<EOF
-          # 原有Python代码完全保持不变
+          # 原有Python代码保持不变
           import os
           import re
           import shutil
           from pathlib import Path
           import fitz
-
+          
           source_dir = Path(os.getenv("SOURCE_DIR"))
           target_dir = Path(os.getenv("TARGET_DIR"))
           search_file = Path(os.getenv("SEARCH_FILE"))
-
+          
           search_numbers = []
-          with open(search_file, 'r') as f:
+          with open(search_file, 'r', encoding='utf-8') as f:
               for line in f:
                   line = line.strip()
                   if line.startswith('#') or not line:
@@ -94,7 +124,7 @@ jobs:
                       num = line.split()[0].strip()
                   if num.isdigit():
                       search_numbers.append(f"{int(num):04d}")
-
+          
           copied_files = []
           for file_path in source_dir.glob('**/*.pdf'):
               match = re.match(r'^(\d{4})_', file_path.name)
@@ -103,6 +133,7 @@ jobs:
               
               file_num = match.group(1)
               if file_num in search_numbers:
+                  # 保持原有PDF处理逻辑
                   pdf_document = fitz.open(file_path)
                   page = pdf_document.load_page(0)
                   rect = page.rect
@@ -133,25 +164,27 @@ jobs:
                           counter += 1
                       shutil.copy2(txt_path, target_txt_path)
                       copied_files.append(target_txt_path.name)
-
+          
           if not copied_files:
               print("::warning::没有找到匹配的文件！")
               exit(78)
-          print("成功复制的文件：\\n" + "\\n".join(copied_files))
+          print("成功处理的文件：\\n" + "\\n".join(copied_files))
           EOF
 
-      - name: Commit and push results
+      - name: 提交变更
         run: |
           cd private-repo
-          git config user.email "file-matcher@auto"
-          git config user.name "File Matcher"
-          file_count=$(find "$TARGET_DIR" -type f | wc -l)
-          commit_msg="Auto: 找到并复制 $file_count 个匹配文件（包含 PDF 和 TXT）"
+          git config user.email "auto-file-processor@github"
+          git config user.name "Auto File Processor"
+          
+          file_count=$(find "$TARGET_DIR" -type f -name "*.pdf" | wc -l)
+          commit_msg="Auto: 更新 ${file_count} 个匹配文件"
           
           git add "$TARGET_DIR"
           if git diff --cached --quiet; then
-            echo "No changes to commit"
+            echo "无变更需要提交"
           else
             git commit -m "$commit_msg"
             git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
+            echo "✅ 变更已推送"
           fi
