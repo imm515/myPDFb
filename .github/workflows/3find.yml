@@ -75,12 +75,12 @@ jobs:
           mkdir -p "$TARGET_DIR"
           
           # 检查查找单号文件是否存在（带调试信息）
-          if [ ! -f "${SEARCH_FILE}" ]; then
-            echo "::error::查找单号文件不存在：${SEARCH_FILE@Q}"
-            echo "当前目录内容："
-            ls -la "$WORK_DIR/"
-            exit 1
-          fi
+          #if [ ! -f "${SEARCH_FILE}" ]; then
+          #  echo "::error::查找单号文件不存在：${SEARCH_FILE@Q}"
+          #  echo "当前目录内容："
+          #  ls -la "$WORK_DIR/"
+          #  exit 1
+          #fi
           
       - name: Process number matching
         run: |
