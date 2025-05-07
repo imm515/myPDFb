@@ -60,7 +60,7 @@ jobs:
 
       - name: 使用工作目录
         run: |
-          echo "工作目录是：WORK_DIR"
+          echo "工作目录是：WORK_DIR" #手动删了$
           echo "源目录是：SOURCE_DIR"
           echo "目标目录是：OUTPUT_DIR"
           echo "查找单号文件是：SEARCH_FILE"
