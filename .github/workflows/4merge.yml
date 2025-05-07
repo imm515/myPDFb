@@ -15,7 +15,7 @@ jobs:
   pdf-merger:
     runs-on: ubuntu-latest
     env:
-      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
+      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"
 
     steps:
       - name: Checkout private repo
@@ -29,77 +29,86 @@ jobs:
       - name: Read WORK_DIR from file
         id: read_work_dir
         run: |
-          # 读取文件内容，忽略空白行和以 # 开头的行
           WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
           if [ -z "$WORK_DIR" ]; then
-            echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
+            echo "::error::未能从 $WORK_DIR_FILE 中读取到有效 WORK_DIR"
             exit 1
           fi
-          echo "WORK_DIR: WORK_DIR"
+          echo "✅ 读取到 WORK_DIR: $WORK_DIR"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
 
-      - name: 设置工作目录环境变量
+      - name: 设置源、目标目录环境变量
         run: |
           echo "SOURCE_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
           echo "OUTPUT_DIR=$WORK_DIR/4拼接PDF" >> $GITHUB_ENV
-          SEARCH_FILE="$WORK_DIR/#查找单号.v"
-          if [ ! -f "$SEARCH_FILE" ]; then
-            SEARCH_FILE="$WORK_DIR/#查找单号"  # 如果没有找到.v后缀文件，尝试查找无后缀文件
+
+      - name: 查找查找单号文件（无后缀或 .v 后缀）
+        run: |
+          # 先定义两个候选文件路径（相对于 private-repo 根）
+          CAND1="$WORK_DIR/#查找单号"
+          CAND2="$WORK_DIR/#查找单号.v"
+
+          if [ -f "private-repo/$CAND1" ]; then
+            MATCHED_SEARCH="$CAND1"
+          elif [ -f "private-repo/$CAND2" ]; then
+            MATCHED_SEARCH="$CAND2"
+          else
+            echo "::error::未找到查找单号文件，请确保存在：'$CAND1' 或 '$CAND2'"
+            exit 1
           fi
-          echo "SEARCH_FILE=$SEARCH_FILE" >> $GITHUB_ENV
+
+          echo "SEARCH_FILE=$MATCHED_SEARCH" >> $GITHUB_ENV
+          echo "✅ 识别到查找单号文件：$MATCHED_SEARCH"
 
       - name: 使用工作目录
         run: |
-          echo "工作目录是：WORK_DIR"
-          echo "源目录是：SOURCE_DIR"
-          echo "目标目录是：OUTPUT_DIR"
-          echo "查找单号文件是：SEARCH_FILE"
+          echo "工作目录：$WORK_DIR"
+          echo "源目录：$SOURCE_DIR"
+          echo "输出目录：$OUTPUT_DIR"
+          echo "查找单号文件：$SEARCH_FILE"
+
       - name: Install Ghostscript
         run: |
           sudo apt-get update
           sudo apt-get install -y ghostscript
+
       - name: Prepare workspace
         run: |
           cd private-repo
           mkdir -p "$OUTPUT_DIR"
           echo "开始拼接PDF" > merge.log
+
       - name: Extract search numbers
         id: extract-search-numbers
         run: |
           cd private-repo
-          # 解析查找单号文件，获取排序依据
           search_numbers=()
           while IFS= read -r line; do
-            line=$(echo "$line" | xargs)  # 去除前后空格
-            if [[ -z "$line" || "$line" == \#* ]]; then  # 跳过空行和注释
-              continue
-            fi
-            # 提取数字部分（支持两种格式）
+            line=$(echo "$line" | xargs)
+            [[ -z "$line" || "$line" == \#* ]] && continue
             if [[ "$line" == *--* ]]; then
-              num=$(echo "$line" | awk -F'--' '{print $NF}' | xargs)
+              num=$(awk -F'--' '{print $NF}' <<<"$line" | xargs)
             else
-              num=$(echo "$line" | awk '{print $1}' | xargs)
+              num=$(awk '{print $1}' <<<"$line" | xargs)
             fi
-            if [[ "$num" =~ ^[0-9]+$ ]]; then
-              search_numbers+=("$(printf "%04d" "$num")")  # 补零到4位
-            fi
+            [[ "$num" =~ ^[0-9]+$ ]] && search_numbers+=("$(printf "%04d" "$num")")
           done < "$SEARCH_FILE"
           echo "查找单号顺序：${search_numbers[*]}"
           echo "SEARCH_NUMBERS=${search_numbers[*]}" >> $GITHUB_ENV
+
       - name: Merge and compress PDFs with Ghostscript
         run: |
           cd private-repo
-          # 按查找单号顺序获取PDF文件
           pdf_files=()
           for num in $SEARCH_NUMBERS; do
-            matched_file=$(find "$SOURCE_DIR" -type f -name "${num}_*.pdf" | sort -V)
-            if [[ -n "$matched_file" ]]; then
-              pdf_files+=("$matched_file")
+            matches=( $(find "$SOURCE_DIR" -type f -name "${num}_*.pdf" | sort -V) )
+            if [ ${#matches[@]} -gt 0 ]; then
+              pdf_files+=( "${matches[@]}" )
             else
-              echo "::warning::未找到编号为 $num 的PDF文件"
+              echo "::warning::未找到编号为 $num 的 PDF 文件"
             fi
           done
-          # 使用Ghostscript合并并压缩PDF
+
           gs -sDEVICE=pdfwrite \
              -dCompatibilityLevel=1.4 \
              -dPDFSETTINGS=/printer \
@@ -108,65 +117,53 @@ jobs:
              -dBATCH \
              -sOutputFile="${OUTPUT_DIR}/merged_compressed.pdf" \
              "${pdf_files[@]}"
-          echo "成功生成合并并压缩后的PDF：OUTPUT_DIR/m***ed.pdf"
+          echo "✅ 已生成合并并压缩后的PDF：$OUTPUT_DIR/merged_compressed.pdf"
+
       - name: Merge TXT files with strict check
         run: |
           cd private-repo
           python3 <<EOF
           import os
-          from pathlib import Path  # 导入 Path 类
-          
+          from pathlib import Path
+
           source_dir = os.getenv("SOURCE_DIR")
           output_dir = os.getenv("OUTPUT_DIR")
-          search_numbers = os.getenv("SEARCH_NUMBERS").split()
-          output_txt_path = os.path.join(output_dir, "merged.txt")
-          
-          # 按查找单号顺序获取TXT文件
-          txt_files = []
-          for num in search_numbers:
-              matched_files = list(Path(source_dir).glob(f"**/{num}_*.txt"))  # 使用 Path 类
-              if matched_files:
-                  txt_files.extend(str(f) for f in matched_files)
+          nums = os.getenv("SEARCH_NUMBERS").split()
+          out_txt = Path(output_dir) / "merged.txt"
+
+          # 收集TXT文件
+          txts = []
+          for n in nums:
+              found = list(Path(source_dir).glob(f"**/{n}_*.txt"))
+              if found:
+                  txts.extend(found)
               else:
-                  print(f"::warning::未找到编号为 {num} 的TXT文件")
-          
-          # 检查TXT文件是否与PDF文件一一对应
-          missing_pdf_files = []
-          for txt_file in txt_files:
-              pdf_file = txt_file.replace('.txt', '.pdf')
-              if not os.path.exists(pdf_file):
-                  missing_pdf_files.append(os.path.basename(txt_file))
-          
-          if missing_pdf_files:
-              print("::error::以下TXT文件缺少对应的PDF文件：")
-              for file in missing_pdf_files:
-                  print(f"- {file}")
+                  print(f"::warning::未找到编号为 {n} 的 TXT 文件")
+          # 严格检查一一对应
+          missing = [t.name for t in txts if not Path(str(t).replace('.txt','.pdf')).exists()]
+          if missing:
+              print("::error::以下 TXT 文件缺少对应 PDF：")
+              for m in missing: print(f"- {m}")
               exit(1)
-          
-          # 合并TXT文件内容
-          with open(output_txt_path, 'w', encoding='utf-8') as outfile:
-              for txt_file in txt_files:
-                  with open(txt_file, 'r', encoding='utf-8') as infile:
-                      outfile.write(infile.read())
-                      outfile.write("\n\n")  # 每个TXT文件后插入两个空行
-          
-          print(f"成功合并 {len(txt_files)} 个TXT文件到：output_txt_path")
+          # 合并
+          with open(out_txt, 'w', encoding='utf-8') as w:
+              for t in txts:
+                  w.write(t.read_text(encoding='utf-8'))
+                  w.write("\n\n")
+          print(f"✅ 已合并 {len(txts)} 个 TXT 文件到：{out_txt}")
           EOF
+
       - name: Commit results
         run: |
           cd private-repo
           git config user.email "pdf-merger@auto"
           git config user.name "PDF Merger"
-          # 生成版本号
-          timestamp=$(date +%Y%m%d%H%M%S)
-          commit_msg="Auto: 生成优化拼接PDF和汇总TXT（v$timestamp）"
-          # 添加更改到暂存区
+          ts=$(date +%Y%m%d%H%M%S)
+          msg="Auto: 生成优化拼接PDF和汇总TXT（v$ts）"
           git add "$OUTPUT_DIR"
-          # 检查是否有 staged 的更改
           if git diff --cached --quiet; then
-            echo "No staged changes to commit. Skipping commit and push."
+            echo "No changes to commit. Skipping."
             exit 0
           fi
-          # 如果有 staged 的更改，则提交并推送
-          git commit -m "$commit_msg" > /dev/null 2>&1
+          git commit -m "$msg"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
