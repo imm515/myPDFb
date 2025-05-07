@@ -58,21 +58,22 @@ jobs:
       - name: Initialize directories
         run: |
           cd private-repo
+          # 先检查查找单号文件
+          if [ ! -f "$SEARCH_FILE" ] && [ ! -f "$SEARCH_FILE.v" ]; then
+            echo "::error::查找单号文件不存在：$SEARCH_FILE 或 $SEARCH_FILE.v"
+            exit 1
+          fi
+         
+          # 适配文件版本
+          if [ -f "$SEARCH_FILE.v" ]; then
+            echo "SEARCH_FILE=$SEARCH_FILE.v" >> $GITHUB_ENV
+          fi
+         
           # 清空旧目录
           rm -rf "$TARGET_DIR"
           echo "♻️ 已清空旧3查找目录"
           # 创建目标目录
           mkdir -p "$TARGET_DIR"
-
-          # 检查查找单号文件是否存在（同时兼容 .v 和无后缀版本）
-          if [ ! -f "$SEARCH_FILE" ] && [ ! -f "$SEARCH_FILE.v" ]; then
-            echo "::error::查找单号文件不存在：$SEARCH_FILE 或 $SEARCH_FILE.v"
-            exit 1
-          fi
-          # 自动适配文件版本
-          if [ -f "$SEARCH_FILE.v" ]; then
-            export SEARCH_FILE="$SEARCH_FILE.v"
-          fi
 
       - name: Process number matching
         run: |
