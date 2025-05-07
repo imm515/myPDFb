@@ -43,7 +43,7 @@ jobs:
           echo "工作目录是：WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号" >> $GITHUB_ENV  # 去掉 .v 后缀
+          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -58,22 +58,17 @@ jobs:
       - name: Initialize directories
         run: |
           cd private-repo
-          # 先检查查找单号文件
-          if [ ! -f "$SEARCH_FILE" ] && [ ! -f "$SEARCH_FILE.v" ]; then
-            echo "::error::查找单号文件不存在：$SEARCH_FILE 或 $SEARCH_FILE.v"
-            exit 1
-          fi
-         
-          # 适配文件版本
-          if [ -f "$SEARCH_FILE.v" ]; then
-            echo "SEARCH_FILE=$SEARCH_FILE.v" >> $GITHUB_ENV
-          fi
-         
           # 清空旧目录
           rm -rf "$TARGET_DIR"
           echo "♻️ 已清空旧3查找目录"
           # 创建目标目录
           mkdir -p "$TARGET_DIR"
+          
+          # 检查查找单号文件是否存在
+          if [ ! -f "$SEARCH_FILE" ]; then
+            echo "::error::查找单号文件不存在：$SEARCH_FILE"
+            exit 1
+          fi
 
       - name: Process number matching
         run: |
