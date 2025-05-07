@@ -42,25 +42,7 @@ jobs:
           echo "工作目录是：WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-
-      - name: 设置查找文件路径
-        run: |
-          # 使用 find 命令更安全地查找文件
-          mapfile -t files < <(find "$WORK_DIR" -maxdepth 1 -type f -name '*#查找单号*' -not -name '.*')
-          
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "::error::在 $WORK_DIR 中找不到 #查找单号 文件"
-            exit 1
-          elif [ ${#files[@]} -gt 1 ]; then
-            echo "::warning::找到多个匹配文件："
-            printf '  %s\n' "${files[@]}"
-            echo "将使用第一个文件：${files[0]}"
-          fi
-          
-          # 安全转义特殊字符
-          echo "SEARCH_FILE=${files[0]@Q}" >> $GITHUB_ENV
-          echo "已设置查找文件：${files[0]}"
-
+          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -79,6 +61,11 @@ jobs:
           # 创建目标目录
           mkdir -p "$TARGET_DIR"
           
+          # 检查查找单号文件是否存在
+          if [ ! -f "$SEARCH_FILE" ]; then
+            echo "::error::查找单号文件不存在：$SEARCH_FILE"
+            exit 1
+          fi
       - name: Process number matching
         run: |
           cd private-repo
