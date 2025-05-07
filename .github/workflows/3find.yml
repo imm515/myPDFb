@@ -43,6 +43,11 @@ jobs:
           echo "工作目录是：$WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
+
+          # 在查找文件前添加调试信息
+          echo "当前工作目录内容："
+          ls -la "$WORK_DIR"
+          echo "正在查找文件：#查找单号、#查找单号.v、#查找单号.*"
           
           # 兼容无后缀或任意后缀的情况（优先匹配无缀）
           if [ -f "$WORK_DIR/#查找单号" ]; then
