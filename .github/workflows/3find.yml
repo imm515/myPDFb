@@ -29,34 +29,38 @@ jobs:
       - name: Read WORK_DIR from file
         id: read_work_dir
         run: |
-          # 读取文件内容，忽略空白行和以 # 开头的行
+          # 读取文件内容，忽略注释和空行
           WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
           if [ -z "$WORK_DIR" ]; then
-            echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
+            echo "::error::未能从 $WORK_DIR_FILE 中读取到有效 WORK_DIR"
             exit 1
           fi
-          echo "WORK_DIR: WORK_DIR"
+          echo "✅ 读取到 WORK_DIR: $WORK_DIR"
+          # 写入环境变量，后续使用
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+
       - name: 使用工作目录
         run: |
-          echo "工作目录是：WORK_DIR"
+          echo "✅ 工作目录是：$WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          
+
       - name: 查找查找单号文件（无后缀或 .v 后缀）
         run: |
-          SEARCH_CANDIDATE_1="private-repo/$WORK_DIR/#查找单号"
-          SEARCH_CANDIDATE_2="private-repo/$WORK_DIR/#查找单号.v"
-          
-          if [ -f "$SEARCH_CANDIDATE_1" ]; then
+          # 只匹配相对于 private-repo 根的路径
+          SEARCH_CANDIDATE_1="$WORK_DIR/#查找单号"
+          SEARCH_CANDIDATE_2="$WORK_DIR/#查找单号.v"
+
+          if [ -f "private-repo/$SEARCH_CANDIDATE_1" ]; then
             MATCHED_SEARCH="$SEARCH_CANDIDATE_1"
-          elif [ -f "$SEARCH_CANDIDATE_2" ]; then
+          elif [ -f "private-repo/$SEARCH_CANDIDATE_2" ]; then
             MATCHED_SEARCH="$SEARCH_CANDIDATE_2"
           else
-            echo "::error::未找到查找单号文件。请确保存在：'#查找单号' 或 '#查找单号.v'"
+            echo "::error::未找到查找单号文件。请确保存在：'$SEARCH_CANDIDATE_1' 或 '$SEARCH_CANDIDATE_2'"
             exit 1
           fi
 
+          # 输出到环境变量
           echo "SEARCH_FILE=$MATCHED_SEARCH" >> $GITHUB_ENV
           echo "✅ 识别到查找单号文件：$MATCHED_SEARCH"
 
@@ -69,41 +73,41 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pymupdf
+
       - name: Initialize directories
         run: |
           cd private-repo
           # 清空旧目录
           rm -rf "$TARGET_DIR"
-          echo "♻️ 已清空旧3查找目录"
+          echo "♻️ 已清空旧 3查找 目录：$TARGET_DIR"
           # 创建目标目录
           mkdir -p "$TARGET_DIR"
-          
-          # 检查查找单号文件是否存在
+
+          # 检查查找单号文件是否存在（此时在 private-repo 下，SEARCH_FILE 为相对路径）
           if [ ! -f "$SEARCH_FILE" ]; then
             echo "::error::查找单号文件不存在：$SEARCH_FILE"
             exit 1
           fi
+
       - name: Process number matching
         run: |
           cd private-repo
           python3 <<EOF
-          import os
-          import re
-          import shutil
+          import os, re, shutil
           from pathlib import Path
           import fitz  # PyMuPDF
+
           source_dir = Path(os.getenv("SOURCE_DIR"))
           target_dir = Path(os.getenv("TARGET_DIR"))
           search_file = Path(os.getenv("SEARCH_FILE"))
+
           # 解析查找单号文件
           search_numbers = []
           with open(search_file, 'r') as f:
               for line in f:
                   line = line.strip()
-                  # 跳过注释和空行
                   if line.startswith('#') or not line:
                       continue
-                  # 提取数字部分（支持两种格式）
                   if '--' in line:
                       num = line.split('--')[-1].strip()
                   else:
@@ -111,82 +115,62 @@ jobs:
                   if num.isdigit():
                       search_numbers.append(f"{int(num):04d}")
           print(f"需要查找的编号：{search_numbers}")
-          # 创建目标目录结构
+
           target_dir.mkdir(parents=True, exist_ok=True)
-          # 匹配文件并复制
+
           copied_files = []
-          for file_path in source_dir.glob('**/*.pdf'):  # 查找 .pdf 文件
-              # 匹配四位数开头的文件名
+          for file_path in source_dir.glob('**/*.pdf'):
               match = re.match(r'^(\d{4})_', file_path.name)
               if not match:
                   continue
-              
               file_num = match.group(1)
               if file_num in search_numbers:
-                  # 打开 PDF 文件
-                  pdf_document = fitz.open(file_path)
-                  
-                  # 仅处理第一页（假设 PDF 是单页的）
-                  page = pdf_document.load_page(0)
-                  # 获取页面尺寸
+                  pdf = fitz.open(file_path)
+                  page = pdf.load_page(0)
                   rect = page.rect
-                  # 创建字体对象
-                  font = fitz.Font("helv")  # 使用 Helvetica 字体
-                  text = str(int(file_num))  # 去掉前导零
-                  text_length = font.text_length(text, fontsize=8)  # 计算文本长度
-                  # 设置文本位置（右下角，距离右边 10px，底部 10px）
-                  text_position = fitz.Point(rect.width - 10 - text_length, rect.height - 10)
-                  # 添加文本
-                  page.insert_text(text_position, text, fontname="helv", fontsize=8, color=(0.5, 0.5, 0.5))  # 灰色文本
-                  # 处理目标文件名
-                  target_pdf_path = target_dir / file_path.name
-                  # 处理重名文件
-                  counter = 1
-                  while target_pdf_path.exists():
-                      new_name = f"{file_num}_{counter:02d}{file_path.suffix}"
-                      target_pdf_path = target_dir / new_name
-                      counter += 1
-                  
-                  # 保存修改后的 PDF
-                  pdf_document.save(target_pdf_path)
-                  pdf_document.close()
-                  copied_files.append(target_pdf_path.name)
-                  # 复制对应的 .txt 文件
+                  font = fitz.Font("helv")
+                  text = str(int(file_num))
+                  text_length = font.text_length(text, fontsize=8)
+                  pos = fitz.Point(rect.width - 10 - text_length, rect.height - 10)
+                  page.insert_text(pos, text, fontname="helv", fontsize=8, color=(0.5,0.5,0.5))
+                  tgt_pdf = target_dir / file_path.name
+                  cnt = 1
+                  while tgt_pdf.exists():
+                      tgt_pdf = target_dir / f"{file_num}_{cnt:02d}{file_path.suffix}"
+                      cnt += 1
+                  pdf.save(tgt_pdf)
+                  pdf.close()
+                  copied_files.append(tgt_pdf.name)
                   txt_path = file_path.with_suffix('.txt')
                   if txt_path.exists():
-                      target_txt_path = target_dir / txt_path.name
-                      # 处理重名文件
-                      counter = 1
-                      while target_txt_path.exists():
-                          new_name = f"{file_num}_{counter:02d}{txt_path.suffix}"
-                          target_txt_path = target_dir / new_name
-                          counter += 1
-                      
-                      shutil.copy2(txt_path, target_txt_path)
-                      copied_files.append(target_txt_path.name)
+                      tgt_txt = target_dir / txt_path.name
+                      cnt = 1
+                      while tgt_txt.exists():
+                          tgt_txt = target_dir / f"{file_num}_{cnt:02d}{txt_path.suffix}"
+                          cnt += 1
+                      shutil.copy2(txt_path, tgt_txt)
+                      copied_files.append(tgt_txt.name)
+
           print(f"\n成功复制 {len(copied_files)} 个文件：")
           print('\n'.join(copied_files))
           if not copied_files:
               print("::warning::没有找到匹配的文件！")
               exit(78)
           EOF
+
       - name: Commit and push results
         run: |
           cd private-repo
           git config user.email "file-matcher@auto"
           git config user.name "File Matcher"
-          
-          # 生成智能提交信息
+
           file_count=$(find "$TARGET_DIR" -type f | wc -l)
           commit_msg="Auto: 找到并复制 $file_count 个匹配文件（包含 PDF 和 TXT）"
-          
-          # 添加更改到暂存区
+
           git add "$TARGET_DIR"
-          # 检查是否有 staged 的更改
           if git diff --cached --quiet; then
-            echo "No staged changes to commit. Skipping commit and push."
+            echo "No changes to commit. Skipping."
             exit 0
           fi
-          # 如果有 staged 的更改，则提交并推送
-          git commit -m "$commit_msg" > /dev/null 2>&1
+          git commit -m "$commit_msg"
           git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
