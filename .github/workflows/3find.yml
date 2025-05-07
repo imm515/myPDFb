@@ -56,7 +56,21 @@ jobs:
           echo "当前工作目录: $WORK_DIR"
           echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
           echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
-          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
+
+          # 动态检测查找单号文件名（兼容带.v和不带.v）
+          SEARCH_FILE_V="$WORK_DIR/#查找单号.v"
+          SEARCH_FILE_NO_EXT="$WORK_DIR/#查找单号"
+          
+          if [ -f "$SEARCH_FILE_V" ]; then
+            echo "检测到带.v后缀的查找单号文件"
+            echo "SEARCH_FILE=$SEARCH_FILE_V" >> $GITHUB_ENV
+          elif [ -f "$SEARCH_FILE_NO_EXT" ]; then
+            echo "检测到无后缀的查找单号文件"
+            echo "SEARCH_FILE=$SEARCH_FILE_NO_EXT" >> $GITHUB_ENV
+          else
+            echo "::error::查找单号文件不存在（尝试路径: $SEARCH_FILE_V 和 $SEARCH_FILE_NO_EXT）"
+            exit 1
+          fi
 
       - name: Setup Python
         uses: actions/setup-python@v4
