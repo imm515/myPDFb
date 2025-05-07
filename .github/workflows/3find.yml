@@ -37,34 +37,12 @@ jobs:
           fi
           echo "WORK_DIR: WORK_DIR"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
-          
       - name: 使用工作目录
         run: |
-          echo "工作目录是：$WORK_DIR"
-          
-          # 显式处理含 # 的文件名
-          SEARCH_FILE_WITH_V="$WORK_DIR/"#查找单号.v
-          SEARCH_FILE_WITHOUT_V="$WORK_DIR/"#查找单号
-          
-          # 调试输出
-          echo "尝试路径1: $SEARCH_FILE_WITH_V"
-          echo "尝试路径2: $SEARCH_FILE_WITHOUT_V"
-          
-          # 检查文件存在性
-          if [ -f "$SEARCH_FILE_WITH_V" ]; then
-            SEARCH_FILE="$SEARCH_FILE_WITH_V"
-          elif [ -f "$SEARCH_FILE_WITHOUT_V" ]; then
-            SEARCH_FILE="$SEARCH_FILE_WITHOUT_V"
-          else
-            echo "::error::查找单号文件不存在（尝试路径：$SEARCH_FILE_WITH_V 或 $SEARCH_FILE_WITHOUT_V）"
-            echo "WORK_DIR 实际内容："
-            ls -la "$WORK_DIR"
-            exit 1
-          fi
-          
-          echo "SEARCH_FILE=$SEARCH_FILE" >> $GITHUB_ENV
-          echo "检测到查找单号文件：$SEARCH_FILE"
-          
+          echo "工作目录是：WORK_DIR"
+          echo "SOURCE_DIR=$WORK_DIR/2name" >> $GITHUB_ENV
+          echo "TARGET_DIR=$WORK_DIR/3查找" >> $GITHUB_ENV
+          echo "SEARCH_FILE=$WORK_DIR/#查找单号.v" >> $GITHUB_ENV
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -74,7 +52,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pymupdf
-          
       - name: Initialize directories
         run: |
           cd private-repo
@@ -84,14 +61,11 @@ jobs:
           # 创建目标目录
           mkdir -p "$TARGET_DIR"
           
-          # 检查查找单号文件是否存在（带调试信息）
-          if [ ! -f "${SEARCH_FILE}" ]; then
-            echo "::error::查找单号文件不存在：${SEARCH_FILE@Q}"
-            echo "当前目录内容："
-            ls -la "$WORK_DIR/"
+          # 检查查找单号文件是否存在
+          if [ ! -f "$SEARCH_FILE" ]; then
+            echo "::error::查找单号文件不存在：$SEARCH_FILE"
             exit 1
           fi
-          
       - name: Process number matching
         run: |
           cd private-repo
