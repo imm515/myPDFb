@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   file-matcher:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}  
     runs-on: ubuntu-latest
     env:
       WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
