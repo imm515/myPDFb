@@ -2,20 +2,21 @@ name: 1cut
 
 on:
   workflow_dispatch:
+    inputs:
+      work_directory:
+        description: '请输入工作目录名称 (例如: cb202508伙食)。留空将自动生成上个月目录名。'
+        required: false
+        type: string
 
 jobs:
   process-pdf:
     runs-on: ubuntu-latest
-
-    # 设置环境变量
     env:
       WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
-      OUTPUT_DIR: "1cut"  # 输出目录
+      OUTPUT_SUBDIR: "1cut"
 
     steps:
-      - name: Checkout public repo
-        uses: actions/checkout@v4
-
+      # 拉取私有仓库
       - name: Checkout private repo
         uses: actions/checkout@v4
         with:
@@ -24,53 +25,68 @@ jobs:
           path: private-repo
           ref: main
 
-      - name: Read WORK_DIR from file
-        id: read_work_dir
+      # 设置工作目录
+      - name: Set WORK_DIR and update config file
         run: |
-          # 读取文件内容，忽略空白行和以 # 开头的行
-          WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
-          if [ -z "$WORK_DIR" ]; then
-            echo "Error: No valid WORK_DIR found in $WORK_DIR_FILE"
-            exit 1
-          fi
-          echo "WORK_DIR: WORK_DIR"
-          echo "WORK_DIR=$WORK_DIR" >> $GITHUB_ENV
+          cd private-repo
 
+          # 获取用户输入
+          input_dir="${{ github.event.inputs.work_directory }}"
+
+          # 生成上个月目录（cbYYYYMM）
+          last_month=$(date -d "$(date +%Y-%m-15) -1 month" +%Y%m)
+          if [ -z "$input_dir" ]; then
+            work_dir_name="cb${last_month}"
+            echo "::notice::未检测到输入值，将使用默认目录：$work_dir_name"
+          else
+            work_dir_name="$input_dir"
+            echo "::notice::已使用用户输入的目录：$work_dir_name"
+          fi
+
+          # 写入 myPDF工作目录.v，保留注释行
+          today=$(date '+%Y%m%d')
+          {
+            echo "# 输入myPDF的工作目录 $today"
+            echo "$work_dir_name"
+          } > "$WORK_DIR_FILE"
+
+          # 设置环境变量，供后续步骤使用
+          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name" >> $GITHUB_ENV
+          echo "DEST_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name/${{ env.OUTPUT_SUBDIR }}" >> $GITHUB_ENV
+
+      # 安装依赖
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils python3-pip
           pip3 install PyMuPDF
 
-      - name: Clean output directory
+      # 清空输出目录
+      - name: Initialize workspace
         run: |
-          OUTPUT_PATH="private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR/$OUTPUT_DIR"
-          if [ -d "$OUTPUT_PATH" ]; then
-            rm -rf "$OUTPUT_PATH"/*
-          else
-            mkdir -p "$OUTPUT_PATH"
+          cd private-repo
+          rm -rf "${{ env.DEST_DIR }}"
+          mkdir -p "${{ env.DEST_DIR }}"
+          echo "♻️ 已初始化输出目录 ${{ env.DEST_DIR }}"
+
+      # 检查 PDF 文件
+      - name: List PDF files
+        run: |
+          cd private-repo
+          find "${{ env.WORK_DIR }}" -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
+          if [ ! -s pdf_files.txt ]; then
+            echo "::error::未找到 PDF 文件，请确认 ${{ env.WORK_DIR }} 下存在 PDF"
+            exit 1
           fi
+          echo "找到 PDF 文件列表："
+          cat pdf_files.txt | awk '{print substr($0,1,10) "***" substr($0,length($0)-7)}'
 
-      - name: List PDF files in private repo (root directory only)
+      # 处理 PDF：按页三等分输出 txt + pdf
+      - name: Process PDF files
         run: |
-          find private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
-          #echo "Found PDF files:"
-          #cat pdf_files.txt
-
-          # 输出模糊化后的内容
-          echo "Found PDF files (masked):"
-          #cat pdf_files.txt | awk '{print substr($0, 1, 3) "***" substr($0, length($0)-4)}'
-          cat pdf_files.txt | awk '{print substr($0, 1, 10) "***" substr($0, length($0)-7)}'
-          
-      - name: Extract text and split PDF into parts
-        run: |
-          # 初始化输出目录
-          OUTPUT_PATH="private-repo/${{ secrets.PRIVATE_DIR }}/$WORK_DIR/$OUTPUT_DIR"
-          mkdir -p "$OUTPUT_PATH"
-      
-          # 将 Python 逻辑写入临时脚本
+          cd private-repo
           cat << 'EOF' > process_pdf.py
-          import fitz  # PyMuPDF
+          import fitz
           import os
           import sys
 
@@ -78,81 +94,43 @@ jobs:
           output_dir = sys.argv[2]
           base_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
-          # 打开 PDF 文件
           doc = fitz.open(pdf_path)
-
           for page_num, page in enumerate(doc, 1):
-              # 获取页面尺寸
-              rect = page.rect
-              w, h = rect.width, rect.height
-
-              # 按上、中、下三部分提取文本
-              for part_num, (part_name, (y0, y1)) in enumerate([
-                  ("1top", (0, h/3)),
-                  ("2mid", (h/3, 2*h/3)),
-                  ("3bot", (2*h/3, h))
-              ], 1):
-                  # 定义文本提取区域
+              w, h = page.rect.width, page.rect.height
+              for part_name, (y0, y1) in [("1top",(0,h/3)), ("2mid",(h/3,2*h/3)), ("3bot",(2*h/3,h))]:
                   text_rect = fitz.Rect(0, y0, w, y1)
                   text = page.get_textbox(text_rect)
                   txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"
-                  with open(txt_path, "w", encoding="utf-8") as f:
+                  with open(txt_path,"w",encoding="utf-8") as f:
                       f.write(text)
-
-                  # 创建新的 PDF 页面
                   new_doc = fitz.open()
-                  new_page = new_doc.new_page(width=w, height=(y1 - y0))
-
-                  # 将当前页面的指定区域复制到新页面
-                  new_page.show_pdf_page(
-                      fitz.Rect(0, 0, w, (y1 - y0)),  # 目标区域
-                      doc,  # 源文档
-                      page_num - 1,  # 源页面索引（从 0 开始）
-                      clip=fitz.Rect(0, y0, w, y1)  # 源页面裁剪区域
-                  )
-
-                  # 保存分割后的 PDF
-                  pdf_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.pdf"
-                  new_doc.save(pdf_path)
+                  new_page = new_doc.new_page(width=w,height=(y1-y0))
+                  new_page.show_pdf_page(fitz.Rect(0,0,w,(y1-y0)), doc, page_num-1, clip=text_rect)
+                  pdf_path_out = f"{output_dir}/{base_name}_p{page_num}_{part_name}.pdf"
+                  new_doc.save(pdf_path_out)
                   new_doc.close()
           EOF
-      
-          # 读取 PDF 文件路径到数组中
+
           mapfile -t pdf_files < pdf_files.txt
-
-          # 检查是否读取到文件
-          if [ ${#pdf_files[@]} -eq 0 ]; then
-            echo "No PDF files found!"
-            exit 1
-          fi
-
-          # 循环处理每个 PDF 文件
-          for pdf_path in "${pdf_files[@]}"; do
-            #echo "Processing: $pdf_path"
-
-            # 模糊化路径显示
-            #masked_path="${pdf_path:0:3}***${pdf_path: -5}"
-            masked_path="${pdf_path:0:10}***${pdf_path: -8}"            
-            echo "Processing: $masked_path"
-            
-            python3 process_pdf.py "$pdf_path" "$OUTPUT_PATH"
+          for pdf in "${pdf_files[@]}"; do
+              masked="${pdf:0:10}***${pdf: -8}"
+              echo "Processing $masked"
+              python3 process_pdf.py "$pdf" "${{ env.DEST_DIR }}"
           done
 
-      - name: Commit and push to private repo
+      # 提交结果
+      - name: Commit and push
         run: |
           cd private-repo
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
 
-          # 添加所有更改到暂存区
-          git add .
+          git add "${{ env.DEST_DIR }}"
+          git add "$WORK_DIR_FILE"
 
-          # 检查是否有 staged 的更改
           if git diff --cached --quiet; then
-            echo "No staged changes to commit. Skipping commit and push."
-            exit 0
+            echo "✅ 没有变动，跳过提交"
+          else
+            git commit -m "Auto: 初始化目录并处理 PDF"
+            git push
           fi
-
-          # 如果有 staged 的更改，则提交并推送
-          git config user.email "actions@github.com"
-          git config user.name "GitHub Actions"
-          git commit -m "Auto: Extracted text and split PDF into parts" > /dev/null 2>&1
-          git push "https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.PRIVATE_REPO }}.git" main
