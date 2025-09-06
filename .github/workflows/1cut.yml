@@ -4,15 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       work_directory:
-        description: '请输入工作目录名称 (例如: cb202508伙食)。留空将自动生成上个月目录名。'
+        description: '请输入工作目录名称 (例如: cb202508)。留空将自动生成上个月目录名。'
         required: false
         type: string
+      suffix:
+        description: '可选后缀'
+        required: false
+        type: choice
+        options:
+          - ""        # 空（不加后缀）
+          - 伙食
 
 jobs:
   process-pdf:
     runs-on: ubuntu-latest
     env:
-      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
+      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"
       OUTPUT_SUBDIR: "1cut"
 
     steps:
@@ -25,34 +32,55 @@ jobs:
           path: private-repo
           ref: main
 
-      # 设置工作目录
-      - name: Set WORK_DIR and update config file
+      # 设置工作目录并检查合法性
+      - name: Set WORK_DIR and validate
         run: |
           cd private-repo
 
-          # 获取用户输入
           input_dir="${{ github.event.inputs.work_directory }}"
+          suffix="${{ github.event.inputs.suffix }}"
 
-          # 生成上个月目录（cbYYYYMM）
+          # 生成默认目录名
           last_month=$(date -d "$(date +%Y-%m-15) -1 month" +%Y%m)
           if [ -z "$input_dir" ]; then
             work_dir_name="cb${last_month}"
-            echo "::notice::未检测到输入值，将使用默认目录：$work_dir_name"
           else
             work_dir_name="$input_dir"
-            echo "::notice::已使用用户输入的目录：$work_dir_name"
           fi
 
-          # 写入 myPDF工作目录.v，保留注释行
+          # 避免重复添加后缀
+          if [ -n "$suffix" ] && [[ "$work_dir_name" != *"$suffix" ]]; then
+            work_dir_name="${work_dir_name}${suffix}"
+          fi
+
+          # 目录名合法性检查
+          if [[ ! "$work_dir_name" =~ ^cb[0-9]{6}([伙食]{0,2})?$ ]]; then
+            echo "::error::目录名不合法：$work_dir_name，必须是 cbYYYYMM 或 cbYYYYMM伙食 格式"
+            exit 1
+          fi
+          echo "::notice::最终工作目录：$work_dir_name"
+
+          # 写入配置文件，保留注释
           today=$(date '+%Y%m%d')
           {
             echo "# 输入myPDF的工作目录 $today"
             echo "$work_dir_name"
           } > "$WORK_DIR_FILE"
 
-          # 设置环境变量，供后续步骤使用
+          # 设置环境变量
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name" >> $GITHUB_ENV
           echo "DEST_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name/${{ env.OUTPUT_SUBDIR }}" >> $GITHUB_ENV
+
+      # 检查远程仓库目录是否存在
+      - name: Validate remote directory exists
+        run: |
+          cd private-repo
+          git fetch origin main
+          if ! git ls-tree -d --name-only origin/main | grep -q "^${{ secrets.PRIVATE_DIR }}/$work_dir_name\$"; then
+              echo "::error::远程仓库不存在目录：${{ secrets.PRIVATE_DIR }}/$work_dir_name，workflow 退出"
+              exit 1
+          fi
+          echo "::notice::远程仓库目录存在：${{ secrets.PRIVATE_DIR }}/$work_dir_name"
 
       # 安装依赖
       - name: Install dependencies
@@ -61,7 +89,7 @@ jobs:
           sudo apt-get install -y poppler-utils python3-pip
           pip3 install PyMuPDF
 
-      # 清空输出目录
+      # 初始化输出目录
       - name: Initialize workspace
         run: |
           cd private-repo
@@ -133,4 +161,3 @@ jobs:
           else
             git commit -m "Auto: 初始化目录并处理 PDF"
             git push
-          fi
