@@ -112,37 +112,38 @@ jobs:
       - name: Process PDF files
         run: |
           cd private-repo
-          echo "import fitz" > process_pdf.py
-          echo "import os" >> process_pdf.py
-          echo "import sys" >> process_pdf.py
-          echo "" >> process_pdf.py
-          echo "pdf_path = sys.argv[1]" >> process_pdf.py
-          echo "output_dir = sys.argv[2]" >> process_pdf.py
-          echo "base_name = os.path.splitext(os.path.basename(pdf_path))[0]" >> process_pdf.py
-          echo "" >> process_pdf.py
-          echo "doc = fitz.open(pdf_path)" >> process_pdf.py
-          echo "for page_num, page in enumerate(doc, 1):" >> process_pdf.py
-          echo "    w, h = page.rect.width, page.rect.height" >> process_pdf.py
-          echo "    for part_name, (y0, y1) in [(\"1top\",(0,h/3)), (\"2mid\",(h/3,2*h/3)), (\"3bot\",(2*h/3,h))]:" >> process_pdf.py
-          echo "        text_rect = fitz.Rect(0, y0, w, y1)" >> process_pdf.py
-          echo "        text = page.get_textbox(text_rect)" >> process_pdf.py
-          echo "        txt_path = f\"{output_dir}/{base_name}_p{page_num}_{part_name}.txt\"" >> process_pdf.py
-          echo "        with open(txt_path,'w',encoding='utf-8') as f:" >> process_pdf.py
-          echo "            f.write(text)" >> process_pdf.py
-          echo "        new_doc = fitz.open()" >> process_pdf.py
-          echo "        new_page = new_doc.new_page(width=w,height=(y1-y0))" >> process_pdf.py
-          echo "        new_page.show_pdf_page(fitz.Rect(0,0,w,(y1-y0)), doc, page_num-1, clip=text_rect)" >> process_pdf.py
-          echo "        pdf_path_out = f\"{output_dir}/{base_name}_p{page_num}_{part_name}.pdf\"" >> process_pdf.py
-          echo "        new_doc.save(pdf_path_out)" >> process_pdf.py
-          echo "        new_doc.close()" >> process_pdf.py
-      
-          # 遍历 PDF 文件处理
-          mapfile -t pdf_files < pdf_files.txt
-          for pdf in "${pdf_files[@]}"; do
-              masked="${pdf:0:10}***${pdf: -8}"
-              echo "Processing $masked"
-              python3 process_pdf.py "$pdf" "${DEST_DIR}"
-          done
+          cat << 'EOF' > process_pdf.py
+          import fitz
+          import os
+          import sys
+          
+          pdf_path = sys.argv[1]
+          output_dir = sys.argv[2]
+          base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+          
+          doc = fitz.open(pdf_path)
+          for page_num, page in enumerate(doc, 1):
+              w, h = page.rect.width, page.rect.height
+              for part_name, (y0, y1) in [("1top",(0,h/3)), ("2mid",(h/3,2*h/3)), ("3bot",(2*h/3,h))]:
+                  text_rect = fitz.Rect(0, y0, w, y1)
+                  text = page.get_textbox(text_rect)
+                  txt_path = f"{output_dir}/{base_name}_p{page_num}_{part_name}.txt"
+                  with open(txt_path,"w",encoding="utf-8") as f:
+                      f.write(text)
+                  new_doc = fitz.open()
+                  new_page = new_doc.new_page(width=w,height=(y1-y0))
+                  new_page.show_pdf_page(fitz.Rect(0,0,w,(y1-y0)), doc, page_num-1, clip=text_rect)
+                  pdf_path_out = f"{output_dir}/{base_name}_p{page_num}_{part_name}.pdf"
+                  new_doc.save(pdf_path_out)
+                  new_doc.close()
+          EOF
+          
+                    mapfile -t pdf_files < pdf_files.txt
+                    for pdf in "${pdf_files[@]}"; do
+                        masked="${pdf:0:10}***${pdf: -8}"
+                        echo "Processing $masked"
+                        python3 process_pdf.py "$pdf" "${DEST_DIR}"
+                    done
 
       - name: Commit and push
         run: |
