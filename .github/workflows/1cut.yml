@@ -71,12 +71,13 @@ jobs:
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name" >> $GITHUB_ENV
           echo "DEST_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name/${{ env.OUTPUT_SUBDIR }}" >> $GITHUB_ENV
 
-      # 检查远程仓库目录是否存在
+      # 静默检查远程仓库目录是否存在
       - name: Validate remote directory exists
         run: |
           cd private-repo
           git fetch origin main
-          if ! git ls-tree -d --name-only origin/main | grep -q "^${{ secrets.PRIVATE_DIR }}/$work_dir_name\$"; then
+
+          if ! git ls-tree -r --name-only origin/main >/dev/null 2>&1 | grep -q "^${{ secrets.PRIVATE_DIR }}/$work_dir_name\$"; then
               echo "::error::远程仓库不存在目录：${{ secrets.PRIVATE_DIR }}/$work_dir_name，workflow 退出"
               exit 1
           fi
