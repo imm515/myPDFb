@@ -144,8 +144,6 @@ jobs:
               python3 process_pdf.py "$pdf" "${DEST_DIR}"
           done
 
-
-      # 提交结果
       - name: Commit and push
         run: |
           cd private-repo
@@ -160,3 +158,5 @@ jobs:
           else
             git commit -m "Auto: 初始化目录并处理 PDF"
             git push
+          fi
+
