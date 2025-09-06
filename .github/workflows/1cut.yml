@@ -67,7 +67,7 @@ jobs:
             echo "$work_dir_name"
           } > "$WORK_DIR_FILE"
 
-          # 设置环境变量
+          # 设置环境变量，供后续步骤使用
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name" >> $GITHUB_ENV
           echo "DEST_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name/${{ env.OUTPUT_SUBDIR }}" >> $GITHUB_ENV
 
@@ -77,11 +77,12 @@ jobs:
           cd private-repo
           git fetch origin main
 
-          if ! git ls-tree -r --name-only origin/main >/dev/null 2>&1 | grep -q "^${{ secrets.PRIVATE_DIR }}/$work_dir_name\$"; then
-              echo "::error::远程仓库不存在目录：${{ secrets.PRIVATE_DIR }}/$work_dir_name，workflow 退出"
+          REMOTE_DIR="${WORK_DIR}"  # 从环境变量读取
+          if ! git ls-tree -r --name-only origin/main >/dev/null 2>&1 | grep -q "^$REMOTE_DIR\$"; then
+              echo "::error::远程仓库不存在目录：$REMOTE_DIR，workflow 退出"
               exit 1
           fi
-          echo "::notice::远程仓库目录存在：${{ secrets.PRIVATE_DIR }}/$work_dir_name"
+          echo "::notice::远程仓库目录存在：$REMOTE_DIR"
 
       # 安装依赖
       - name: Install dependencies
@@ -94,17 +95,17 @@ jobs:
       - name: Initialize workspace
         run: |
           cd private-repo
-          rm -rf "${{ env.DEST_DIR }}"
-          mkdir -p "${{ env.DEST_DIR }}"
-          echo "♻️ 已初始化输出目录 ${{ env.DEST_DIR }}"
+          rm -rf "${DEST_DIR}"
+          mkdir -p "${DEST_DIR}"
+          echo "♻️ 已初始化输出目录 ${DEST_DIR}"
 
       # 检查 PDF 文件
       - name: List PDF files
         run: |
           cd private-repo
-          find "${{ env.WORK_DIR }}" -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
+          find "${WORK_DIR}" -maxdepth 1 -name "*.pdf" | sort > pdf_files.txt
           if [ ! -s pdf_files.txt ]; then
-            echo "::error::未找到 PDF 文件，请确认 ${{ env.WORK_DIR }} 下存在 PDF"
+            echo "::error::未找到 PDF 文件，请确认 ${WORK_DIR} 下存在 PDF"
             exit 1
           fi
           echo "找到 PDF 文件列表："
@@ -144,7 +145,7 @@ jobs:
           for pdf in "${pdf_files[@]}"; do
               masked="${pdf:0:10}***${pdf: -8}"
               echo "Processing $masked"
-              python3 process_pdf.py "$pdf" "${{ env.DEST_DIR }}"
+              python3 process_pdf.py "$pdf" "${DEST_DIR}"
           done
 
       # 提交结果
@@ -154,7 +155,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
-          git add "${{ env.DEST_DIR }}"
+          git add "${DEST_DIR}"
           git add "$WORK_DIR_FILE"
 
           if git diff --cached --quiet; then
