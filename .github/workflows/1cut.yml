@@ -71,18 +71,15 @@ jobs:
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name" >> $GITHUB_ENV
           echo "DEST_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name/${{ env.OUTPUT_SUBDIR }}" >> $GITHUB_ENV
 
-      # 检查目录是否存在（私库兼容，高效）
-      - name: Validate directory exists in repo
+      # 检查目录是否存在（本地路径判断）
+      - name: Validate directory exists locally
         run: |
           cd private-repo
-          REMOTE_DIR="${WORK_DIR}"  # 已经是 my农行回单/cb202508伙食
-
-          # 检查目录是否存在
-          if ! git ls-tree -d HEAD --name-only | grep -q "^${REMOTE_DIR}$"; then
-              echo "::error::远程仓库不存在目录：$REMOTE_DIR，workflow 退出"
-              exit 1
+          if [ ! -d "${WORK_DIR}" ]; then
+            echo "::error::工作目录不存在：${WORK_DIR}，workflow 退出"
+            exit 1
           fi
-          echo "::notice::远程仓库目录存在：$REMOTE_DIR"
+          echo "::notice::工作目录存在：${WORK_DIR}"
 
       # 安装依赖
       - name: Install dependencies
