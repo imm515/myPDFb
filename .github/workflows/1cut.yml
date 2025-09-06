@@ -75,8 +75,10 @@ jobs:
       - name: Validate directory exists in repo
         run: |
           cd private-repo
-          REMOTE_DIR="${WORK_DIR}"
-          if ! git ls-tree -r HEAD --name-only | grep -q "^$REMOTE_DIR\$"; then
+          REMOTE_DIR="${WORK_DIR}"  # 已经是 my农行回单/cb202508伙食
+
+          # 检查目录是否存在
+          if ! git ls-tree -d HEAD --name-only | grep -q "^${REMOTE_DIR}$"; then
               echo "::error::远程仓库不存在目录：$REMOTE_DIR，workflow 退出"
               exit 1
           fi
