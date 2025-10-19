@@ -1,7 +1,19 @@
 name: 3find
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
+    inputs:
+      work_directory:
+        description: "请输入工作目录名称 (例如: cb202508)。留空则从文件读取，若无则取上个月。"
+        required: false
+        type: string
+      suffix:
+        description: "可选后缀"
+        required: false
+        type: choice
+        options:
+          - ""
+          - 伙食
   workflow_run:
     workflows: ["2name"]  # 依赖于 2name 工作流
     types:
@@ -13,7 +25,7 @@ concurrency:
 
 jobs:
   file-matcher:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}  
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     env:
       WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
@@ -27,18 +39,38 @@ jobs:
           path: private-repo
           ref: main
 
-      - name: Read WORK_DIR from file
+      - name: Resolve WORK_DIR (inputs/file/default)
         id: read_work_dir
         run: |
-          # 读取文件内容，忽略注释和空行
-          WORK_DIR=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1)
-          if [ -z "$WORK_DIR" ]; then
-            echo "::error::未能从 $WORK_DIR_FILE 中读取到有效 WORK_DIR"
+          input_dir="${{ github.event.inputs.work_directory }}"
+          suffix="${{ github.event.inputs.suffix }}"
+          
+          # 1) 优先使用手动输入；若无输入则尝试从文件读取；再无则默认上个月
+          work_dir_name=""
+          if [ -n "$input_dir" ]; then
+            work_dir_name="$input_dir"
+          elif [ -f "private-repo/$WORK_DIR_FILE" ]; then
+            work_dir_name=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1 | xargs)
+          fi
+          
+          if [ -z "$work_dir_name" ]; then
+            last_month=$(date -d "$(date +%Y-%m-15) -1 month" +%Y%m)
+            work_dir_name="cb${last_month}"
+          fi
+          
+          # 2) 处理后缀：仅当提供且未包含时追加
+          if [ -n "$suffix" ] && [[ "$work_dir_name" != *"$suffix" ]]; then
+            work_dir_name="${work_dir_name}${suffix}"
+          fi
+          
+          # 3) 合法性校验：只允许 cbYYYYMM 或 cbYYYYMM伙食
+          if [[ ! "$work_dir_name" =~ ^cb[0-9]{6}(伙食)?$ ]]; then
+            echo "::error::目录名不合法：$work_dir_name，必须是 cbYYYYMM 或 cbYYYYMM伙食 格式"
             exit 1
           fi
-          echo "✅ 读取到 WORK_DIR: $WORK_DIR"
-          # 写入环境变量，后续使用
-          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$WORK_DIR" >> $GITHUB_ENV
+          
+          echo "::notice::最终工作目录：$work_dir_name"
+          echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name" >> $GITHUB_ENV
 
       - name: 使用工作目录
         run: |
