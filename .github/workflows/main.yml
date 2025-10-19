@@ -1,0 +1,32 @@
+name: Cleanup workflow runs and artifacts
+
+on:
+  # 每半年执行一次（1月1日和7月1日凌晨3点）
+  schedule:
+    - cron: '0 3 1 1,7 *'
+  # 可手动触发
+  workflow_dispatch:
+
+jobs:
+  cleanup_workflow_runs:
+    name: 🧹 Delete old workflow runs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 0           # 不保留天数
+          keep_minimum_runs: 2     # 各 workflow 至少保留 2 次运行记录
+
+  cleanup_artifacts:
+    name: 🧺 Delete old artifacts
+    runs-on: ubuntu-latest
+    needs: cleanup_workflow_runs   # 等待上一步执行完毕
+    steps:
+      - name: Delete artifacts older than 1 day
+        uses: c-hive/gha-remove-artifacts@v2
+        with:
+          age: '1 day'             # 删除超过 1 天的 artifacts
+          skip-tags: true          # 可选：跳过 tag 构建产物
