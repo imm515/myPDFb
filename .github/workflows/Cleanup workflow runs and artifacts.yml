@@ -28,7 +28,8 @@ jobs:
     needs: cleanup_workflow_runs
     steps:
       - name: Delete artifacts older than 1 day
-        uses: c-hive/gha-remove-artifacts@v2
+        uses: c-hive/gha-remove-artifacts@v1   # ⚠️ 改成 v1
         with:
           age: '1 day'
           skip-tags: true
+
