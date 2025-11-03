@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       work_directory:
-        description: "请输入工作目录名称 (例如: cb202508)。留空则从文件读取，若无则取上个月。"
+        description: "请输入工作目录名称 (例如: cb202508)。留空则默认上个月。"
         required: false
         type: string
       suffix:
@@ -15,7 +15,7 @@ on:
           - ""
           - 伙食
   workflow_run:
-    workflows: ["2name"]  # 依赖于 2name 工作流
+    workflows: ["2name"]
     types:
       - completed
 
@@ -28,7 +28,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     env:
-      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"  # 工作目录配置文件路径
+      WORK_DIR_FILE: "${{ secrets.PRIVATE_DIR }}/myPDF工作目录.v"
 
     steps:
       - name: Checkout private repo
@@ -39,36 +39,34 @@ jobs:
           path: private-repo
           ref: main
 
-      - name: Resolve WORK_DIR (inputs/file/default)
+      - name: Resolve WORK_DIR (manual/default)
         id: read_work_dir
         run: |
           input_dir="${{ github.event.inputs.work_directory }}"
           suffix="${{ github.event.inputs.suffix }}"
-          
-          # 1) 优先使用手动输入；若无输入则尝试从文件读取；再无则默认上个月
-          work_dir_name=""
+
+          # 1) 手动输入优先，否则默认上个月
           if [ -n "$input_dir" ]; then
             work_dir_name="$input_dir"
-          elif [ -f "private-repo/$WORK_DIR_FILE" ]; then
-            work_dir_name=$(grep -v -e '^#' -e '^$' "private-repo/$WORK_DIR_FILE" | head -n 1 | xargs)
-          fi
-          
-          if [ -z "$work_dir_name" ]; then
+          else
             last_month=$(date -d "$(date +%Y-%m-15) -1 month" +%Y%m)
             work_dir_name="cb${last_month}"
           fi
-          
-          # 2) 处理后缀：仅当提供且非空且不为默认值 "" 时追加
-          if [ -n "$suffix" ] && [ "$suffix" != "" ] && [[ "$work_dir_name" != *"$suffix" ]]; then
+
+          # 2) 后缀处理
+          if [ -n "$suffix" ] && [[ "$work_dir_name" != *"$suffix" ]]; then
             work_dir_name="${work_dir_name}${suffix}"
           fi
-          
-          # 3) 合法性校验：只允许 cbYYYYMM 或 cbYYYYMM伙食
+
+          # 3) 合法性校验
           if [[ ! "$work_dir_name" =~ ^cb[0-9]{6}(伙食)?$ ]]; then
             echo "::error::目录名不合法：$work_dir_name，必须是 cbYYYYMM 或 cbYYYYMM伙食 格式"
             exit 1
           fi
-          
+
+          # 4) 写回文件，保证下次默认使用本次运行结果
+          echo "$work_dir_name" > "private-repo/$WORK_DIR_FILE"
+
           echo "::notice::最终工作目录：$work_dir_name"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name" >> $GITHUB_ENV
 
@@ -80,7 +78,6 @@ jobs:
 
       - name: 查找查找单号文件（无后缀或 .v 后缀）
         run: |
-          # 只匹配相对于 private-repo 根的路径
           SEARCH_CANDIDATE_1="$WORK_DIR/#查找单号"
           SEARCH_CANDIDATE_2="$WORK_DIR/#查找单号.v"
 
@@ -93,7 +90,6 @@ jobs:
             exit 1
           fi
 
-          # 输出到环境变量
           echo "SEARCH_FILE=$MATCHED_SEARCH" >> $GITHUB_ENV
           echo "✅ 识别到查找单号文件：$MATCHED_SEARCH"
 
@@ -110,13 +106,9 @@ jobs:
       - name: Initialize directories
         run: |
           cd private-repo
-          # 清空旧目录
           rm -rf "$TARGET_DIR"
           echo "♻️ 已清空旧 3查找 目录：$TARGET_DIR"
-          # 创建目标目录
           mkdir -p "$TARGET_DIR"
-
-          # 检查查找单号文件是否存在（此时在 private-repo 下，SEARCH_FILE 为相对路径）
           if [ ! -f "$SEARCH_FILE" ]; then
             echo "::error::查找单号文件不存在：$SEARCH_FILE"
             exit 1
@@ -128,13 +120,12 @@ jobs:
           python3 <<EOF
           import os, re, shutil
           from pathlib import Path
-          import fitz  # PyMuPDF
+          import fitz
 
           source_dir = Path(os.getenv("SOURCE_DIR"))
           target_dir = Path(os.getenv("TARGET_DIR"))
           search_file = Path(os.getenv("SEARCH_FILE"))
 
-          # 解析查找单号文件
           search_numbers = []
           with open(search_file, 'r') as f:
               for line in f:
@@ -150,7 +141,6 @@ jobs:
           print(f"需要查找的编号：{search_numbers}")
 
           target_dir.mkdir(parents=True, exist_ok=True)
-
           copied_files = []
           for file_path in source_dir.glob('**/*.pdf'):
               match = re.match(r'^(\d{4})_', file_path.name)
@@ -200,7 +190,7 @@ jobs:
           file_count=$(find "$TARGET_DIR" -type f | wc -l)
           commit_msg="Auto: 找到并复制 $file_count 个匹配文件（包含 PDF 和 TXT）"
 
-          git add "$TARGET_DIR"
+          git add "$TARGET_DIR" "$WORK_DIR_FILE"
           if git diff --cached --quiet; then
             echo "No changes to commit. Skipping."
             exit 0
