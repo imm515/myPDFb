@@ -58,8 +58,8 @@ jobs:
             work_dir_name="cb${last_month}"
           fi
           
-          # 2) 处理后缀：仅当提供且未包含时追加
-          if [ -n "$suffix" ] && [[ "$work_dir_name" != *"$suffix" ]]; then
+          # 2) 处理后缀：仅当提供且非空且不为默认值 "" 时追加
+          if [ -n "$suffix" ] && [ "$suffix" != "" ] && [[ "$work_dir_name" != *"$suffix" ]]; then
             work_dir_name="${work_dir_name}${suffix}"
           fi
           
