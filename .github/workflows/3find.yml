@@ -39,33 +39,68 @@ jobs:
           path: private-repo
           ref: main
 
-      - name: Resolve WORK_DIR (manual/default)
+      - name: Resolve WORK_DIR (Conditional)
         id: read_work_dir
         run: |
+          # 获取上下文信息
+          event_name="${{ github.event_name }}"
           input_dir="${{ github.event.inputs.work_directory }}"
           suffix="${{ github.event.inputs.suffix }}"
+          work_dir_file="private-repo/$WORK_DIR_FILE"
+          work_dir_name=""
 
-          # 1) 手动输入优先，否则默认上个月
-          if [ -n "$input_dir" ]; then
-            work_dir_name="$input_dir"
+          # =======================================================
+          # 步骤 1: 根据触发事件类型确定基础 work_dir_name
+          # =======================================================
+
+          if [ "$event_name" == "workflow_run" ]; then
+              # Case A: 由 2name 自动触发
+              # 仅从文件读取，确保继承自 1cut/2name
+              
+              if [ -f "$work_dir_file" ]; then
+                  # 从文件中读取，忽略注释和空行
+                  work_dir_name=$(grep -v -e '^#' -e '^$' "$work_dir_file" | head -n 1 | xargs)
+                  echo "::notice::自动触发：从文件读取工作目录：$work_dir_name"
+              else
+                  echo "::error::自动触发失败：未找到 $WORK_DIR_FILE 文件，无法确定工作目录。"
+                  exit 1
+              fi
+
+          elif [ "$event_name" == "workflow_dispatch" ]; then
+              # Case B: 手动触发 (使用新版逻辑：输入优先，否则默认上个月)
+              
+              if [ -n "$input_dir" ]; then
+                  work_dir_name="$input_dir"
+                  echo "::notice::手动触发：使用输入目录：$work_dir_name"
+              else
+                  last_month=$(date -d "$(date +%Y-%m-15) -1 month" +%Y%m)
+                  work_dir_name="cb${last_month}"
+                  echo "::notice::手动触发：输入为空，默认上个月目录：$work_dir_name"
+              fi
+          
           else
-            last_month=$(date -d "$(date +%Y-%m-15) -1 month" +%Y%m)
-            work_dir_name="cb${last_month}"
+              echo "::error::未知触发事件类型：$event_name"
+              exit 1
           fi
 
-          # 2) 后缀处理
-          if [ -n "$suffix" ] && [[ "$work_dir_name" != *"$suffix" ]]; then
-            work_dir_name="${work_dir_name}${suffix}"
+          # =======================================================
+          # 步骤 2: 后续通用处理
+          # =======================================================
+
+          # 2) 后缀处理 (仅在手动触发时且输入了后缀才处理)
+          if [ "$event_name" == "workflow_dispatch" ] && [ -n "$suffix" ] && [[ "$work_dir_name" != *"$suffix" ]]; then
+              work_dir_name="${work_dir_name}${suffix}"
+              echo "::notice::已添加后缀：$suffix"
+          fi
+          
+          # 3) 合法性校验 (无论哪种情况，都必须校验最终结果)
+          if [ -z "$work_dir_name" ] || [[ ! "$work_dir_name" =~ ^cb[0-9]{6}(伙食)?$ ]]; then
+              echo "::error::目录名不合法或为空：$work_dir_name，必须是 cbYYYYMM 或 cbYYYYMM伙食 格式"
+              exit 1
           fi
 
-          # 3) 合法性校验
-          if [[ ! "$work_dir_name" =~ ^cb[0-9]{6}(伙食)?$ ]]; then
-            echo "::error::目录名不合法：$work_dir_name，必须是 cbYYYYMM 或 cbYYYYMM伙食 格式"
-            exit 1
-          fi
-
-          # 4) 写回文件，保证下次默认使用本次运行结果
-          echo "$work_dir_name" > "private-repo/$WORK_DIR_FILE"
+          # 4) 写回文件，保证下次默认使用本次运行结果 (此步骤保持，确保 2name 的正确值被覆盖)
+          echo "$work_dir_name" > "$work_dir_file"
 
           echo "::notice::最终工作目录：$work_dir_name"
           echo "WORK_DIR=${{ secrets.PRIVATE_DIR }}/$work_dir_name" >> $GITHUB_ENV
